@@ -6,3 +6,4 @@ testing, change management and Git workflows.
 Name: Miguel Gonzalez Corvillo
 Professor: Richard Aviles Lopez
 
+Edited from GitHub web
