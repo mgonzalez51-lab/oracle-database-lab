@@ -1,0 +1,43 @@
+
+PL/SQL procedure successfully completed.
+
+
+Grant succeeded.
+
+
+Grant succeeded.
+
+
+User altered.
+
+== Verificación: la cuenta existe en todos los contenedores ==
+
+    CON_ID CONTENEDOR	USERNAME     COM ACCOUNT_STATUS
+---------- ------------ ------------ --- --------------------------------
+	 1 CDB$ROOT	C##OPS_RO    YES OPEN
+	 3 FREEPDB1	C##OPS_RO    YES OPEN
+
+2 rows selected.
+
+
+[1mUSUARIO[m      [1mCONTENEDOR[m    
+____________ _____________ 
+C##OPS_RO    CDB$ROOT      
+
+1 row selected. 
+
+
+   [1mDATAFILES_VISIBLES[m 
+_____________________ 
+                   16 
+
+1 row selected. 
+
+== Intento de escritura (debe fallar) ==
+
+Error starting at line : 5 File @ /tmp/prueba-ro.sql
+In command -
+CREATE TABLE prueba_ro (x NUMBER)
+Error report -
+ORA-01031: insufficient privileges
+Help: https://docs.oracle.com/error-help/db/ora-01031/
