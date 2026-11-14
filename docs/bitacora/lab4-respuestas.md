@@ -223,3 +223,33 @@ Es solo diseño, no lo ejecuto.
   `REVOKE READ ANY TABLE ON SCHEMA admin_clinica FROM aud_clinica;`
   `ALTER USER aud_clinica ACCOUNT LOCK;`
   Bloqueo la cuenta en vez de borrarla para que su rastro de auditoría siga asociado a un usuario existente. Si la política lo permite, más adelante se borraría con `DROP USER aud_clinica;`.
+
+## Parte J — Autopsia de los archivos de la base de datos
+
+Primero le di a `C##OPS_RO` solo lo que le faltaba para leer el alert log desde SQL: `GRANT SELECT ON sys.v_$diag_alert_ext TO c##ops_ro CONTAINER = ALL;` (evidencia 11, ampliar). Es el mismo grant que puse en el reto de la Parte B, en vez de darle un rol amplio.
+
+El inventario (evidencia 11, archivos) sale así: 16 datafiles (4119 MB), 3 tempfiles (60 MB), 2 control files (36 MB) y 3 grupos de redo online de 200 MB con un solo miembro cada uno. Además hay 6 redo archivados (856 MB), que son relacionados, no parte de la base. Los tamaños desde Linux cuadran con un bloque de más: un datafile de 100 MB ocupa 104865792 bytes, que son 100 × 1048576 + 8192 (el bloque 0, la cabecera), y el redo de 200 MB ocupa 209715712, o sea 200 MB + 512, porque el bloque del redo es de 512 bytes.
+
+**Hallazgo: el ADR no está en el volumen.** La comprobación del script dice que `/opt/oracle/diag` vive en la capa del contenedor, y lo pude confirmar con fechas. En la tabla de reinicios de la Parte E el alert log salta del 5 de julio al 14 de noviembre a las 17:13, cuando recreé el contenedor. Falta el arranque del 13 de noviembre a las 18:44 (el del backup de la Parte A, que sí sale en `v$instance`) y todo el Lab 3. Las entradas de julio no sobrevivieron: vienen dentro de la propia imagen, porque la base se creó al construirla (`CREADA 2026-07-05`). O sea, al recrear el contenedor no perdí datos pero sí la historia del alert log, que es justo lo que hace falta para analizar un incidente. Lo apunto para la autopsia de la Parte N.
+
+**Punto de control.**
+
+- El password file sale como relacionado porque no tiene datos de la base, solo quién puede entrar como SYSDBA, SYSOPER... por red (en mi caso solo `SYS`, según `v$pwfile_users`). Si se pierde, la base sigue funcionando y se puede entrar con `/ as sysdba` desde la propia máquina; se vuelve a crear con `orapwd`.
+- En mi imagen no son enlaces sueltos: es la carpeta `$ORACLE_HOME/dbs` entera la que apunta a `/opt/oracle/oradata/dbconfig/FREE/dbs`, dentro del volumen. Lo que se gana es que el SPFILE y el password file sobreviven al recrear el contenedor y entran en la copia del volumen (por eso en la Parte A la copia salió con 0 archivos fuera).
+- TEMP no se respalda porque solo guarda datos de trabajo de las sesiones (ordenaciones, hash) que no valen nada después: si se pierde, se crea un tempfile vacío y listo. Por eso `v$tempfile` sale aparte y el resumen lo marca como "no se copia".
+
+**P16:** B y D. La base son los datafiles, los control files y los redo online (y los tempfiles). El password file, el SPFILE y el alert log son archivos relacionados.
+
+**P17:** C. Si se pierde el disco con los dos control files y el único miembro de cada grupo de redo, y además está en NOARCHIVELOG, no hay redo con el que recuperar: solo se puede restaurar la última copia completa y se pierde todo lo que se hizo después. Por eso hay que multiplexar en discos distintos.
+
+## Parte J — Reto: plan de copia a partir del inventario
+
+Una copia en frío completa sería: datafiles 4119 MB + control files 36 MB + redo online 600 MB + SPFILE y password file (unos pocos KB), o sea unos **4755 MB (≈ 4,6 GB)** sin comprimir. Los tempfiles no hacen falta. Mi copia real de la Parte A pesó 603 MB porque iba comprimida con gzip y la mayoría de los bloques de los datafiles están vacíos.
+
+Con RMAN sobrarían:
+
+- los **redo online** (600 MB): RMAN no los copia, hace una copia que se recupera con el redo archivado;
+- el **segundo control file**: es la misma información multiplexada, basta con un autobackup del control file;
+- los **tempfiles**, que tampoco entran en la copia en frío.
+
+Además RMAN no copia los bloques que nunca se han usado, así que la copia saldría bastante más pequeña que esos 4,6 GB, y se podría hacer con la base abierta porque estoy en ARCHIVELOG.
