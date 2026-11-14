@@ -92,3 +92,33 @@ Sacado del alert log (evidencia 06, la tabla con las horas):
   - `ORA-00800 [Set Priority Failed] [VKTM]/[LGWR]` → **conocido**. El contenedor no deja a Oracle subir la prioridad de esos procesos, la base funciona igual.
   - `ORA-959` en `DROP TABLESPACE IF EXISTS tbs_x` → **conocido**. Lo provoqué yo en el reto de OMF: el `IF EXISTS` lanza el error por dentro y lo silencia, pero queda en el alert log.
   - `ORA-07427 / ORA-27300 / ORA-27303: cannot change directory to dbs` → **a investigar (prioridad baja)**. Salió solo en el primer arranque del contenedor recién recreado (17:13:40) y no se repitió en el reinicio de las 17:40. Creo que es porque el enlace `dbs` de la imagen todavía no existía en ese momento, pero no lo he podido confirmar, así que no lo doy por conocido.
+
+## Parte F — Parámetros: SPFILE, SCOPE y PDB
+
+Mi instancia arrancó con SPFILE (`/opt/oracle/product/26ai/dbhomeFree/dbs/spfileFREE.ora`) y usa ASMM, no AMM: `memory_size = 0`, `sga_target = 1536M` y `pga_aggregate_target = 512M`. En total tiene 564 parámetros, 19 que no están por defecto y 134 estáticos (evidencia 07, lectura).
+
+Un detalle que me sirvió para entender `ISMODIFIED`: `db_create_file_dest` (el del reto de OMF) sale con `ISDEFAULT = FALSE` pero `ISMODIFIED = FALSE`. Es porque lo cambié antes del reinicio de la Parte E, así que en este arranque ya venía del SPFILE y nadie lo ha tocado desde entonces. También vi que en el SPFILE no hay nada de ARCHIVELOG: eso no es un parámetro, está en el control file.
+
+En los cambios (evidencia 07, cambios) se ven bien los alcances: con `SCOPE = MEMORY` `open_cursors` quedó en 400 en memoria y 300 en el SPFILE, y con `SCOPE = BOTH` en 500 en los dos sitios. `db_files` es estático: en memoria da `ORA-02095` y en el SPFILE se queda pendiente (200 en memoria y 300 en el SPFILE) hasta el próximo arranque. Lo deshice con `RESET` y la línea desapareció.
+
+Lo de `processes` me pareció lo más curioso: `v$parameter` lo marca como `IMMEDIATE`, pero al cambiarlo en memoria da `ORA-02097` + `ORA-02095`. La tabla de procesos se dimensiona en la SGA al arrancar y no se puede ampliar en caliente, así que en la práctica solo se cambia con `SCOPE = SPFILE` y reinicio.
+
+Al final guardé dos PFILE en `evidencia/config`: `initFREE_lab4.ora` (sacado del SPFILE, 33 líneas) e `initFREE_lab4_memoria.ora` (de la memoria, 123 líneas). La diferencia son parámetros que la instancia usa pero que nadie ha escrito, como `log_buffer` u `optimizer_mode`. Comprobé que después de las pruebas no quedó nada cambiado: `open_cursors=300`, `processes=200` y ninguna línea de `db_files`.
+
+**P6:** B. Si la instancia arrancó con SPFILE y no pones `SCOPE`, por defecto es `BOTH`: cambia en memoria y en el SPFILE.
+
+**P7:** C. `PROCESSES` es de instancia y no se puede tocar desde una PDB, da `ORA-65040`, que es justo lo que me salió en el bloque 5.
+
+**P8:** A y C. Con `STARTUP PFILE=` arrancas con un PFILE bueno saltándote el SPFILE roto, y con `CREATE SPFILE FROM PFILE=` lo regeneras para los siguientes arranques. Las demás no sirven si la instancia ni siquiera arranca.
+
+## Parte F — Reto: petición de cambio de open_cursors
+
+**Petición:** desarrollo quiere subir `open_cursors` a 1000 porque les sale `ORA-01000: maximum open cursors exceeded`.
+
+- **Valor actual:** 300, escrito en el SPFILE (`*.open_cursors=300`, línea 28 de `initFREE_lab4.ora`) y aplicado en memoria. Es por sesión, no total de la instancia.
+- **Antes de tocar nada:** miraría qué sesión abre tantos cursores con `v$open_cursor` y la estadística `opened cursors current` de `v$sesstat`. Un `ORA-01000` casi siempre es porque la aplicación abre cursores y no los cierra, y si es eso subir el límite solo hace que falle más tarde. Lo primero sería pedirles que lo revisen.
+- **Valor propuesto:** si después de eso de verdad necesitan más, no iría directamente a 1000 sino a 500, que es lo que se justifique con lo medido.
+- **SCOPE:** `ALTER SYSTEM SET open_cursors = 500 COMMENT = 'CR-xxx ORA-01000 app' SCOPE = BOTH;`. Es dinámico, así que no hace falta reiniciar, y con `BOTH` no se pierde en el próximo arranque. El comentario deja apuntado el ticket en el propio SPFILE.
+- **Prueba:** que la aplicación repita lo que le fallaba y seguir `opened cursors current` un rato para ver si se estabiliza o sigue subiendo (si sigue subiendo es una fuga).
+- **Rollback:** `ALTER SYSTEM SET open_cursors = 300 SCOPE = BOTH;`, también sin reiniciar.
+- **Evidencia:** la consulta de antes y la de después, y un PFILE nuevo en `evidencia/config` para que el cambio se vea en el `git diff`.
