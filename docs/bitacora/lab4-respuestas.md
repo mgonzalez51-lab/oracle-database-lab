@@ -156,3 +156,27 @@ Al final guardé dos PFILE en `evidencia/config`: `initFREE_lab4.ora` (sacado de
 Guardé la consulta en `scripts/lab4/08-reto-literales.sql`. Agrupa `V$SQL` por `force_matching_signature`, que es la misma para sentencias que solo cambian en un literal, y saca las que tienen más de 50 cursores. La ejecuto con `C##OPS_RO` desde la raíz, porque para buscar el problema solo hace falta mirar, y con `CONTAINER_DATA = ALL` ve también los cursores de FREEPDB1.
 
 Salió una sola firma, la de `SELECT /* lab4_literal */ COUNT(*) FROM admin_academia.aca_estudiantes WHERE estudiante_id = ...`, en `CON_ID 3` (FREEPDB1), con 740 cursores, 740 ejecuciones y 27362 KB. Lo que más me llamó la atención es que un minuto antes `08-parse-y-pga` había contado 854 cursores: en ese rato la shared pool ya había echado 114. Eso es lo que hacen los literales en una base real, ocupan memoria y van echando cursores útiles de otras sentencias.
+
+## Parte H — Procesos de background y procesos servidor
+
+En `v$process` (evidencia 09) salen 86 procesos Oracle de background pero solo 53 procesos Linux distintos, así que 33 de esos "procesos" en realidad son hilos dentro de otros procesos. Los de servidor sí son 6 y 6, uno por uno. Están todos los obligatorios con su SPID (PMON 2266, LREG 2330, SMON 2322, DBW0 2314, LGWR 2318, CKPT 2320, MMON 2338...) y además `PROCESOS_ARCN = 4`, que son ARC0-ARC3, porque mi base está en ARCHIVELOG (el enunciado esperaba 0). También aparecen sesiones J000-J002, que son esclavos de la cola de jobs que coordina CJQ0.
+
+**Pregunta 15: el SPID de LGWR y el PID de Linux.** Oracle dice que LGWR es el SPID 2318 y leyendo `/proc` dentro del contenedor el proceso 2318 es justo `db_lgwr_FREE`. En cambio `docker top` lo enseña con el PID 12762. Es el mismo proceso, pero el contenedor tiene su propio espacio de nombres de PID: Oracle guarda el PID que ve dentro y `docker top` enseña el del anfitrión. Por eso para cruzarlos hay que mirar desde dentro.
+
+Otra cosa que comprobé es que la columna RSS no se puede sumar: cada proceso enseña entre 84 y 269 MB, pero casi todo es la SGA compartida que sale repetida en cada uno. Sumando los 59 saldrían más de 5 GB en un contenedor que usa unos 2 GB. Para la memoria real hay que ir a `v$sga` y `v$pgastat` como en la Parte G.
+
+**P11:** C. El `COMMIT` solo espera a que LGWR escriba el redo en disco (write-ahead logging). Los bloques de datos los escribe DBWn más tarde, cuando haya checkpoint o falten buffers libres.
+
+**P12:** B y D. PMON y SMON son obligatorios en cualquier instancia. ARC0 solo existe en ARCHIVELOG (yo lo tengo porque mi base lo está), RECO depende de transacciones distribuidas y CJQ0 de la cola de jobs.
+
+## Parte H — Reto: la sesión que más consume
+
+Lancé como SYSDBA (`docker exec ... sqlplus / as sysdba`) un producto cartesiano sobre `aca_matriculas` con la etiqueta `lab4_reto_h` y, mientras corría, lo busqué con `C##OPS_RO` usando `scripts/lab4/09-reto-sesion.sql`, que cruza `v$session` con `v$process` y `v$sql` para las sesiones de usuario activas ordenadas por PGA:
+
+- **SID:** 46 (serial 31858), usuario `SYS`.
+- **SPID:** 4675, y en `/proc` el 4675 es `oracleFREE (DESCRIPTION=(LOCAL=YES)(ADDRESS=(PROTOCOL=beq)))`. `LOCAL=YES` y `beq` es porque entró con `docker exec`, sin pasar por el listener, al revés que la sesión `LOCAL=NO` de la Parte E.
+- **PGA:** 3,3 MB usados y 3,7 MB asignados.
+
+La consulta contó 1799940000 filas en 28,94 s. La primera vez la hice con `< 3000` y tardó 2,9 s, así que acabó antes de que SQLcl llegara a conectarse y no la vi; la tuve que hacer diez veces más larga.
+
+Lo que me llamó la atención es que por PGA la sesión que más tenía no era la mía sino el job J000 (16,3 MB). Mi consulta es casi todo CPU, porque es un `COUNT(*)` de un producto cartesiano y apenas necesita memoria. O sea que "la que más consume" depende de lo que mires: para la PGA vale `v$process`, pero para la CPU habría que añadir la estadística `CPU used by this session` de `v$sesstat`.
