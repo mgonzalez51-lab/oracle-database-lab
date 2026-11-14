@@ -1,0 +1,5 @@
+SQL Format Cleared
+
+                FIRMA     CON_ID   CURSORES EJECUCIONES KB_SHARED_POOL EJEMPLO                                                                    
+--------------------- ---------- ---------- ----------- -------------- ---------------------------------------------------------------------------
+  1863221789280198928          3        740         740          27362 SELECT /* lab4_literal */ COUNT(*) FROM admin_academia.aca_estudiantes WHER

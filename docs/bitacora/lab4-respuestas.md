@@ -122,3 +122,37 @@ Al final guardé dos PFILE en `evidencia/config`: `initFREE_lab4.ora` (sacado de
 - **Prueba:** que la aplicación repita lo que le fallaba y seguir `opened cursors current` un rato para ver si se estabiliza o sigue subiendo (si sigue subiendo es una fuga).
 - **Rollback:** `ALTER SYSTEM SET open_cursors = 300 SCOPE = BOTH;`, también sin reiniciar.
 - **Evidencia:** la consulta de antes y la de después, y un PFILE nuevo en `evidencia/config` para que el cambio se vea en el `git diff`.
+
+## Parte G — Memoria: SGA, Buffer Cache, análisis y PGA
+
+**Cómo está repartida la memoria (evidencia 08, memoria).** Uso ASMM: `memory_target = 0`, `sga_target = 1536M` y `pga_aggregate_target = 512M`. Como `db_cache_size` y `shared_pool_size` están a 0, ASMM reparte solo sin ningún mínimo. Las cifras cuadran con las que imprimió el `STARTUP NOMOUNT` de la Parte E: los 1008 MB de *Database Buffers* son el buffer cache (928 MB) más el Shared IO Pool (80 MB), y los 512 MB de *Variable Size* son la shared pool (480), la large pool (16) y 16 MB libres. El asesor de la SGA sale plano (mismo tiempo y mismas lecturas estimadas de 768 MB a 3 GB), o sea que con la carga que tengo ahora no ganaría nada subiendo `sga_target`. En la PGA, entre los procesos que más usan salen ARC0-ARC3, que existen porque mi base está en ARCHIVELOG.
+
+**Punto de control: el experimento de la caché (evidencia 08, caché).** `ACA_ESTUDIANTES` tiene 20000 filas en 244 bloques.
+
+| | Lógicas | Físicas | Acierto (1 − físicas/lógicas) |
+|---|---|---|---|
+| Ronda 1 (caché fría) | 357 | 262 | 26,6 % |
+| Ronda 2 (caché caliente) | 247 | 0 | 100 % |
+
+- Las lecturas lógicas no bajan en la ronda 2 porque toda lectura física acaba siendo también lógica: el bloque se trae del disco al buffer cache y desde ahí se lee. Lo que cambia es que en la ronda 2 ya no hace falta ir a disco.
+- A mí la ronda 1 me salió con 110 lógicas y 17 físicas más que en el enunciado. Creo que es porque el `FLUSH BUFFER_CACHE` también tiró los bloques del diccionario, y en la primera ejecución Oracle tuvo que releerlos de SYSTEM con consultas recursivas. En la ronda 2 ya estaban en memoria y sale exactamente 247 / 0.
+- En `v$bh` quedan 245 bloques de la tabla para 244 de datos: el que sobra es la cabecera del segmento.
+- El `FLUSH BUFFER_CACHE` solo lo usaría en un laboratorio para medir. En producción vacía la caché de toda la instancia y todas las consultas de todo el mundo irían a disco a la vez.
+
+**Literales frente a variables de enlace (evidencia 08, parse).** Con literales salieron 1008 análisis duros, 530 ms de CPU solo analizando y 570 ms en total; con `:id`, 1 análisis y 10 ms. Es 57 veces más lento para el mismo resultado. En `V$SQL` la versión con literales dejó 854 cursores y 31791 KB de shared pool, frente a 1 cursor y 39 KB con la variable de enlace. Los análisis de más (1049 en total) son recursivos, consultas internas al diccionario. Con la variable de enlace sale 1 análisis y no 1000 blandos porque PL/SQL deja el cursor abierto entre vueltas del bucle.
+
+**Punto de control: la PGA (evidencia 08, parse).** La ordenación de las 60000 matrículas necesitaba unos 2,6 MB. Con la PGA automática los tuvo: `OPTIMAL`, nada en TEMP y 10 ms. Con 64 KB Oracle escribió 3072 KB en TEMP y los releyó seis veces (`6 PASSES`), 220 ms, 22 veces más, y eso con una tabla pequeña. En la instancia el `cache hit percentage` de la PGA bajó del 100 % al 88,5 % y el histograma marca 2 ejecuciones de varias pasadas, que son las de mi prueba de 64 KB. `maximum PGA allocated` (465,5 MB) está cerca del objetivo de 512 MB sin error, porque el objetivo no es un límite; el límite de verdad es `pga_aggregate_limit` (2G).
+
+**P9:** B. Con `MEMORY_TARGET = 0` y `SGA_TARGET` fijado es ASMM, y si además pones `DB_CACHE_SIZE` ese valor pasa a ser un mínimo: el buffer cache puede crecer pero no bajar de 512 MB.
+
+**P10:** A y D. En servidor dedicado, el área de ordenación y la memoria de la sesión van en la PGA del proceso servidor. La shared pool, el log buffer y el buffer cache son de la SGA.
+
+**P-G1:** B. Lo definitivo es cambiar la aplicación para usar variables de enlace. Agrandar la shared pool o hacer `FLUSH` solo esconde el problema, y `CURSOR_SHARING = FORCE` es un parche que afecta a todas las sentencias y el optimizador deja de ver los valores reales.
+
+**P-G2:** B. `6 PASSES` quiere decir que el área de trabajo no cupo en la PGA y Oracle tuvo que releer seis veces sus datos desde TEMP, que es justo lo que me salió con los 64 KB.
+
+## Parte G — Reto: encontrar a los culpables
+
+Guardé la consulta en `scripts/lab4/08-reto-literales.sql`. Agrupa `V$SQL` por `force_matching_signature`, que es la misma para sentencias que solo cambian en un literal, y saca las que tienen más de 50 cursores. La ejecuto con `C##OPS_RO` desde la raíz, porque para buscar el problema solo hace falta mirar, y con `CONTAINER_DATA = ALL` ve también los cursores de FREEPDB1.
+
+Salió una sola firma, la de `SELECT /* lab4_literal */ COUNT(*) FROM admin_academia.aca_estudiantes WHERE estudiante_id = ...`, en `CON_ID 3` (FREEPDB1), con 740 cursores, 740 ejecuciones y 27362 KB. Lo que más me llamó la atención es que un minuto antes `08-parse-y-pga` había contado 854 cursores: en ese rato la shared pool ya había echado 114. Eso es lo que hacen los literales en una base real, ocupan memoria y van echando cursores útiles de otras sentencias.
