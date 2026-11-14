@@ -40,3 +40,15 @@ Lo importante es que `RENAME DATAFILE` no mueve nada, solo cambia la ruta que gu
 Después cambié el `05-crear-contenedor.sh` por la versión 2: ya no publica el 8181 y, como el volumen ya tiene la base, crea el contenedor sin pasar ninguna contraseña (antes el `ORACLE_PWD` se quedaba en el `docker inspect` cada vez). En la prueba de persistencia borré el contenedor y lo recreé: antes y después salen los mismos tablespaces y las mismas tablas, y `docker port` ya solo enseña el 1521. Todo tardó 15 s, la base estaba abierta a los 10 s. La hice después de reubicar a propósito, porque si algún archivo hubiera estado fuera del volumen el `docker rm` se lo habría llevado.
 
 **P2:** B. En Standard Edition (y en Free) no existe el `MOVE DATAFILE` online, así que hay que poner el tablespace OFFLINE, copiar el archivo con el sistema operativo, hacer el `RENAME DATAFILE` y ponerlo ONLINE, que es justo lo que hace mi `03-reubicar-datafiles.sh`.
+
+## Parte C — Reto: que no vuelva a pasar
+
+Para que un `CREATE TABLESPACE` con ruta relativa o sin ruta no vuelva a acabar en `$ORACLE_HOME/dbs` activé OMF apuntando al volumen:
+
+`ALTER SYSTEM SET db_create_file_dest = '/opt/oracle/oradata' SCOPE = BOTH;`
+
+Lo hice en la raíz para que FREEPDB1 y cualquier PDB nueva lo hereden, y con `SCOPE = BOTH` para que se aplique ya y además quede en el SPFILE y no se pierda al reiniciar (en la evidencia 03-omf sale el mismo valor en `v$parameter` y en `v$spparameter`).
+
+Para probarlo creé `tbs_x` sin cláusula `DATAFILE` y Oracle lo puso en `/opt/oracle/oradata/FREE/55E54F210F100828E0630B00580ADFD0/datafile/o1_mf_tbs_x_ohk5w8wq_.dbf`, o sea dentro del volumen, en una carpeta con el GUID de la PDB y con nombre generado por Oracle. Después lo borré con sus datafiles para no dejar basura.
+
+Una cosa que no esperaba: el `MAX_MB` salió 33554432 (32 TB), porque en 26ai los tablespaces se crean BIGFILE por defecto y con OMF el autoextend no tiene límite. O sea que OMF arregla dónde se crea el archivo pero no cuánto puede crecer, así que en las migraciones seguiría poniendo `MAXSIZE`.
