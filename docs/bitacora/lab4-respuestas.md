@@ -180,3 +180,46 @@ Lancé como SYSDBA (`docker exec ... sqlplus / as sysdba`) un producto cartesian
 La consulta contó 1799940000 filas en 28,94 s. La primera vez la hice con `< 3000` y tardó 2,9 s, así que acabó antes de que SQLcl llegara a conectarse y no la vi; la tuve que hacer diez veces más larga.
 
 Lo que me llamó la atención es que por PGA la sesión que más tenía no era la mía sino el job J000 (16,3 MB). Mi consulta es casi todo CPU, porque es un `COUNT(*)` de un producto cartesiano y apenas necesita memoria. O sea que "la que más consume" depende de lo que mires: para la PGA vale `v$process`, pero para la CPU habría que añadir la estadística `CPU used by this session` de `v$sesstat`.
+
+## Parte I — Navegar por los contenedores: qué ve cada usuario y por qué
+
+**Punto de control (evidencia 10, qué ve cada usuario).**
+
+- En `V$LOG` sale una fila con `CON_ID 0` porque el redo es de toda la CDB: hay una sola instancia y un solo juego de redo logs para la raíz y todas las PDB, así que no pertenece a ningún contenedor concreto.
+- `C##LAB4_AUDITOR` desde la raíz solo ve 5 tablespaces (los de `CON_ID 1`) y las sesiones de `CON_ID 0` y 1, ninguna de FREEPDB1. Lo cambiaría `ALTER USER c##lab4_auditor SET CONTAINER_DATA = ALL CONTAINER = CURRENT;`, que es justo lo que tiene `C##OPS_RO` y por eso en la sección 6 solo aparece él.
+- Con `READ ANY TABLE ON SCHEMA admin_academia` `lab4_analista` pudo leer las 3 tablas de Academia y los 20000 estudiantes, pero `admin_clinica.cli_pacientes` siguió dando `ORA-00942` (antes comprobé que la tabla existe, para que el error no fuera por eso). Con `SELECT ANY TABLE` habría podido leer las tablas de todos los esquemas, también los datos de Clínica y Fintech.
+
+**Pregunta 16:** SYS ve 16 datafiles desde la raíz (4 de `CDB$ROOT`, 3 de `PDB$SEED` y 9 de FREEPDB1) y solo 9 desde FREEPDB1, porque dentro de una PDB las vistas solo enseñan lo de ese contenedor.
+
+**Pregunta 17:** `lab4_analista` recibe `ORA-00942` y no "privilegios insuficientes" porque Oracle no te dice si existe algo que no puedes ver. Para él `DBA_TABLES` simplemente no existe. En cambio, cuando el objeto sí lo ve pero le falta la acción, 23ai es explícito: en el `UPDATE` me dio `ORA-41900: missing UPDATE privilege`.
+
+**Pregunta 18:** los dos son comunes y tienen `CREATE SESSION`, `SET CONTAINER` y `SELECT_CATALOG_ROLE` con `CONTAINER = ALL`, pero `C##OPS_RO` además tiene `CONTAINER_DATA = ALL`. Los igualaría `ALTER USER c##lab4_auditor SET CONTAINER_DATA = ALL CONTAINER = CURRENT;`.
+
+**Pregunta 19:** `GRANT READ ANY TABLE ON SCHEMA` da acceso a todo el esquema de una vez, incluidas las tablas que se creen después, y no hace falta ir tabla por tabla. El riesgo es justo ese: si mañana alguien crea en ese esquema una tabla con datos sensibles, el usuario también la va a poder leer sin que nadie se lo haya dado expresamente.
+
+**Pregunta 20:** en mi base `COMMON_USER_PREFIX` vale `C##`, así que en el bloque 3a crear `lab4_local` en la raíz dio `ORA-65096`. En el enunciado salió vacío porque usaron otra imagen y el usuario se creó como común.
+
+En `10-diccionario` también se ve que `DBA_TABLESPACES` desde la raíz da 5 y `CDB_TABLESPACES` 15 (5 de la raíz y 10 de FREEPDB1), y que las `V$` se apoyan en 1591 tablas `X$` en memoria: la definición de `GV$LOG` sale de `x$kccle` y `x$kccrt`, que son del control file, y por eso `V$LOG` ya funciona en MOUNT.
+
+En el ciclo de vida creé `PDB_LAB4` desde la semilla (pasó de `MOUNTED` a `READ WRITE` con sus 3 datafiles en `FREE/PDB_LAB4/` y el servicio `pdb_lab4`), al intentar borrarla abierta dio `ORA-65025` y después de cerrarla se borró con sus archivos. Aunque tengo OMF activado, los archivos fueron a `PDB_LAB4/` porque el script usa `FILE_NAME_CONVERT`, que tiene prioridad.
+
+**P13:** B. Dentro de FREEPDB1 `V$DATAFILE` solo enseña los de esa PDB, `CON_ID 3`. Lo comprobé: 9 datafiles y solo `CON_ID 3`.
+
+**P14:** B. Lo que le falta es `CONTAINER_DATA = ALL`. `SET CONTAINER` ya lo tiene y solo sirve para entrar en la PDB, no para verla desde la raíz.
+
+**P15:** A y D. El privilegio de esquema vale también para las tablas que se creen después y no da acceso a otros esquemas. No permite `UPDATE` (me dio `ORA-41900`) y no hace falta que el usuario sea común: `lab4_analista` era local.
+
+## Parte I — Reto: acceso para una auditora externa
+
+Es solo diseño, no lo ejecuto.
+
+- **Local, en FREEPDB1.** Los datos de Clínica solo están en FREEPDB1, así que no tiene sentido un usuario común que exista en todos los contenedores. Además así no puede hacer `SET CONTAINER` a ningún sitio (en I.2 `lab4_analista` no pudo saltar a la raíz).
+  `CREATE USER aud_clinica IDENTIFIED BY "<temporal, se le da por otro canal>" PASSWORD EXPIRE;` (con `PASSWORD EXPIRE` tiene que cambiarla al entrar la primera vez y la que le damos deja de valer).
+- **Grant mínimo:**
+  `GRANT CREATE SESSION TO aud_clinica;`
+  `GRANT READ ANY TABLE ON SCHEMA admin_clinica TO aud_clinica;`
+  Uso `READ` y no `SELECT` porque `READ` no deja hacer `SELECT ... FOR UPDATE`, así que ni siquiera puede bloquear filas. En I.2 se vio que con esto puede leer el esquema entero pero no otros (`ORA-00942`) ni modificar (`ORA-41900`).
+- **El último día:**
+  `REVOKE READ ANY TABLE ON SCHEMA admin_clinica FROM aud_clinica;`
+  `ALTER USER aud_clinica ACCOUNT LOCK;`
+  Bloqueo la cuenta en vez de borrarla para que su rastro de auditoría siga asociado a un usuario existente. Si la política lo permite, más adelante se borraría con `DROP USER aud_clinica;`.
