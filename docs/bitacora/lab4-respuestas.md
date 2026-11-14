@@ -30,3 +30,13 @@ Yo no se lo daría, por dos motivos:
 2. DBA trae `SELECT ANY TABLE`, o sea que podría leer los datos de negocio (los pacientes de Clínica o los movimientos de Fintech) cuando para monitorizar no le hace falta nada de eso. Además, con roles tan amplios nadie revisa luego qué puede hacer cada cuenta y los permisos se van acumulando.
 
 Si necesitara leer el alert log le daría solo ese objeto: `GRANT SELECT ON sys.v_$diag_alert_ext TO c##ops_ro CONTAINER = ALL;`. El grant va sobre `V_$` porque `V$DIAG_ALERT_EXT` es un sinónimo público y el permiso se da sobre la vista real.
+
+## Parte C — Reubicar los datafiles y prueba de persistencia
+
+Moví los cinco datafiles de negocio con el método offline (`OFFLINE NORMAL`, copia con `cp -p`, `RENAME DATAFILE`, `ONLINE`), porque la versión Free no tiene el `MOVE DATAFILE` online. En la evidencia 03 se ve que los cinco acaban en `FREE/FREEPDB1` en `AVAILABLE` y con `MAX_MB 1024`, y que la segunda vez que lo ejecuto dice "Nada que reubicar". En el `ls` de después ya no queda ningún `*01.dbf` en `dbs`, solo los archivados, el SPFILE y el password file.
+
+Lo importante es que `RENAME DATAFILE` no mueve nada, solo cambia la ruta que guarda el control file, por eso primero hay que copiar el archivo y el original no se borra hasta que el `ONLINE` funciona.
+
+Después cambié el `05-crear-contenedor.sh` por la versión 2: ya no publica el 8181 y, como el volumen ya tiene la base, crea el contenedor sin pasar ninguna contraseña (antes el `ORACLE_PWD` se quedaba en el `docker inspect` cada vez). En la prueba de persistencia borré el contenedor y lo recreé: antes y después salen los mismos tablespaces y las mismas tablas, y `docker port` ya solo enseña el 1521. Todo tardó 15 s, la base estaba abierta a los 10 s. La hice después de reubicar a propósito, porque si algún archivo hubiera estado fuera del volumen el `docker rm` se lo habría llevado.
+
+**P2:** B. En Standard Edition (y en Free) no existe el `MOVE DATAFILE` online, así que hay que poner el tablespace OFFLINE, copiar el archivo con el sistema operativo, hacer el `RENAME DATAFILE` y ponerlo ONLINE, que es justo lo que hace mi `03-reubicar-datafiles.sh`.
