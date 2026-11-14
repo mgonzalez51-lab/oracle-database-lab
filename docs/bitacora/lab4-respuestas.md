@@ -62,3 +62,33 @@ Para las contraseñas de V000 no valía con borrarlas del archivo, porque V000 y
 V002 cargó 20000 estudiantes, 40 asignaturas y 60000 matrículas, y la fila 101 sale `00000101X` y `ACTIVO`. La segunda vez que la ejecuté dijo que ya estaba aplicada y no insertó nada, que es lo que tiene que pasar para no duplicar datos.
 
 **P-D1:** C. `NO AUTHENTICATION` quita cualquier forma de iniciar sesión, aunque alguien sepa la contraseña antigua. `ACCOUNT LOCK` se puede desbloquear y la contraseña sigue existiendo, `PASSWORD EXPIRE` deja entrar para cambiarla y quitar `CREATE SESSION` se puede volver a conceder (o le puede llegar por un rol).
+
+## Parte E — Instancia y base de datos, arranque por etapas y alert log
+
+Con `ro.sh` (evidencia 05) se ve muy claro qué es de cada uno. De la instancia: `HOST_NAME = 459c04bb7fae`, que es el ID del contenedor nuevo de la Parte C (en el diagnóstico de la Parte A era `e3636d59a527`), y `ARRANCADA = 2026-11-14 17:13:41`, que es cuando lo recreé. De la base: `DBID = 1509902213` y `CREADA = 2026-07-05`, que no han cambiado aunque haya tirado el contenedor. El DBID además es el mismo número que el autobackup `c-1509902213-...` que vi en `dbs`.
+
+Desde Linux salen 56-60 procesos `db_*_FREE` (en 26ai ya no se llaman `ora_*`), el `tnslsnr` y, mientras tenía una sesión abierta por red, un `oracleFREE (LOCAL=NO)`, que es su proceso servidor dedicado. Me costó verlo porque al principio lanzaba la sesión y el script en la misma terminal y cuando el script miraba la sesión ya se había cerrado. Lo hice dejando la sesión en segundo plano.
+
+**Punto de control (arranque por etapas, evidencia 06):**
+
+- **ORA-01507 en NOMOUNT:** la instancia ya está levantada (SGA de 1603398928 bytes y procesos) y `v$parameter` responde porque los parámetros salen del SPFILE que ya está en memoria, pero `v$database` necesita el control file y todavía no se ha abierto.
+- **ORA-01219 en MOUNT:** ya están abiertos los control files, así que `v$database` y `v$datafile` funcionan (16 datafiles conocidos), pero `dba_tables` es una vista del diccionario y el diccionario está en el tablespace SYSTEM, que es un datafile que sigue cerrado. En MOUNT solo valen las vistas fijas (`V$`).
+- En OPEN FREEPDB1 se abrió sola en READ WRITE porque tiene el estado guardado (`dba_pdb_saved_states` la muestra en `OPEN`).
+
+**P3:** A y C. `STARTUP_TIME` es de la instancia y cambia en cada arranque (a mí cambió al recrear el contenedor), y `CREATED` es de la base, cuándo se creó. El DBID no cambia al recrear el contenedor: el mío sigue siendo 1509902213.
+
+**P4:** A y C. En NOMOUNT ya se puede consultar `v$parameter` porque sale de la memoria, y se puede recrear el control file con `CREATE CONTROLFILE` porque justo es la etapa en la que todavía no se ha leído. Para `dba_users` hace falta OPEN y para ARCHIVELOG o renombrar SYSTEM hace falta MOUNT.
+
+**P5:** B. `ALTER DATABASE ARCHIVELOG` cambia el control file y necesita que los datafiles estén cerrados, o sea MOUNT.
+
+## Parte E — Reto: el parte del reinicio
+
+Sacado del alert log (evidencia 06, la tabla con las horas):
+
+- **Parada pedida:** 2026-11-14 a las 17:40:24 UTC (18:40 en hora de Madrid), `SHUTDOWN IMMEDIATE` lanzado por sqlplus.
+- **Cuánto tardó:** la parada terminó a las 17:40:27 (2,3 s) y la base estaba abierta a las 17:40:30, así que unos 5 s en total.
+- **Recuperación de instancia:** no hubo. Solo sale el mensaje `Crash Recovery excluding pdb ... which was cleanly closed`, que es informativo, pero ninguna línea de `Beginning crash recovery`. Tiene sentido porque fue un `SHUTDOWN IMMEDIATE` y la base cerró limpia.
+- **Errores:**
+  - `ORA-00800 [Set Priority Failed] [VKTM]/[LGWR]` → **conocido**. El contenedor no deja a Oracle subir la prioridad de esos procesos, la base funciona igual.
+  - `ORA-959` en `DROP TABLESPACE IF EXISTS tbs_x` → **conocido**. Lo provoqué yo en el reto de OMF: el `IF EXISTS` lanza el error por dentro y lo silencia, pero queda en el alert log.
+  - `ORA-07427 / ORA-27300 / ORA-27303: cannot change directory to dbs` → **a investigar (prioridad baja)**. Salió solo en el primer arranque del contenedor recién recreado (17:13:40) y no se repitió en el reinicio de las 17:40. Creo que es porque el enlace `dbs` de la imagen todavía no existía en ese momento, pero no lo he podido confirmar, así que no lo doy por conocido.
