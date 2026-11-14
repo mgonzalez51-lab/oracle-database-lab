@@ -52,3 +52,13 @@ Lo hice en la raíz para que FREEPDB1 y cualquier PDB nueva lo hereden, y con `S
 Para probarlo creé `tbs_x` sin cláusula `DATAFILE` y Oracle lo puso en `/opt/oracle/oradata/FREE/55E54F210F100828E0630B00580ADFD0/datafile/o1_mf_tbs_x_ohk5w8wq_.dbf`, o sea dentro del volumen, en una carpeta con el GUID de la PDB y con nombre generado por Oracle. Después lo borré con sus datafiles para no dejar basura.
 
 Una cosa que no esperaba: el `MAX_MB` salió 33554432 (32 TB), porque en 26ai los tablespaces se crean BIGFILE por defecto y con OMF el autoextend no tiene límite. O sea que OMF arregla dónde se crea el archivo pero no cuánto puede crecer, así que en las migraciones seguiría poniendo `MAXSIZE`.
+
+## Parte D — V003 (contraseñas) y V002 (datos de demostración)
+
+Primero cambié el `08-aplicar-migraciones.sh` por la versión 2. La del Lab 3 cargaba el `.env` y montaba `sys/$ORACLE_PWD@localhost:1521/...`, así que la contraseña de SYS se podía ver con `ps` mientras se ejecutaba. La nueva usa `/ as sysdba` (autenticación del sistema operativo dentro del contenedor) y ya ni siquiera lee el `.env`.
+
+Para las contraseñas de V000 no valía con borrarlas del archivo, porque V000 ya está aplicada y además siguen en el historial de Git. Lo que hice fue invalidarlas. Antes de aplicar V003 probé a entrar con la contraseña que hay en V000 y entré como `ADMIN_ACADEMIA` sin problema, o sea que cualquiera con acceso al repo podía hacerlo. Después de V003 los cinco `admin_*` quedan con `AUTHENTICATION_TYPE = NONE` y con la misma contraseña me da `ORA-01017` (evidencia 04). Siguen en `OPEN` porque no están bloqueadas, simplemente no tienen forma de iniciar sesión: son dueñas de sus tablas y ya está.
+
+V002 cargó 20000 estudiantes, 40 asignaturas y 60000 matrículas, y la fila 101 sale `00000101X` y `ACTIVO`. La segunda vez que la ejecuté dijo que ya estaba aplicada y no insertó nada, que es lo que tiene que pasar para no duplicar datos.
+
+**P-D1:** C. `NO AUTHENTICATION` quita cualquier forma de iniciar sesión, aunque alguien sepa la contraseña antigua. `ACCOUNT LOCK` se puede desbloquear y la contraseña sigue existiendo, `PASSWORD EXPIRE` deja entrar para cambiarla y quitar `CREATE SESSION` se puede volver a conceder (o le puede llegar por un rol).
