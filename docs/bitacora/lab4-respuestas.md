@@ -366,3 +366,9 @@ Usé el banco de pruebas de la Parte L (`LAB4_PRUEBAS` en `TBS_LAB4`) y al final
 **P22:** A y C. `LIST CHAINED ROWS` dice qué filas son y `MOVE ONLINE` con un `PCTFREE` mayor las reescribe sin bloquear. `DBMS_STATS` no rellena `CHAIN_CNT`, y vaciar la caché o tocar el multibloque no tiene nada que ver.
 
 **P23:** B. Si la fila mide 12000 bytes y el bloque 8 KB, está encadenada, y `MOVE` no lo arregla porque no cabe en ningún bloque, igual que me pasó con `ANCHA`.
+
+## Parte N — Autopsia y verificación final
+
+La autopsia está en `docs/bitacora/lab4-autopsia.md` y la verificación final (`16-verificacion-final.sh`) me dio todo OK en las 35 comprobaciones.
+
+**P24:** B. Para un informe diario lo correcto es un usuario común de solo lectura con `SELECT_CATALOG_ROLE`, `CONTAINER_DATA` y el grant puntual de `V_$DIAG_ALERT_EXT`, que es justo `C##OPS_RO`. Con SYS, DBA o SYSTEM el script podría cambiar cualquier cosa, y con la contraseña en el script o en una variable de entorno cualquiera que lo lea la tiene.
