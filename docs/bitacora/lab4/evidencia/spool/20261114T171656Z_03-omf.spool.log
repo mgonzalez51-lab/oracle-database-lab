@@ -1,0 +1,50 @@
+== 1. Antes ==
+
+NAME		       VALUE			      ISPDB
+---------------------- ------------------------------ -----
+db_create_file_dest    (vacio: sin OMF) 	      TRUE
+
+1 row selected.
+
+== 2. Activar OMF en la raiz (SCOPE=BOTH: en memoria y en el SPFILE) ==
+
+System altered.
+
+
+DONDE	VALUE
+------- ------------------------------
+memoria /opt/oracle/oradata
+spfile	/opt/oracle/oradata
+
+2 rows selected.
+
+== 3. Prueba en FREEPDB1: CREATE TABLESPACE sin clausula DATAFILE ==
+
+Session altered.
+
+
+Tablespace dropped.
+
+
+Tablespace created.
+
+
+TABLESPACE FILE_NAME											      MB AUT	 MAX_MB
+---------- ------------------------------------------------------------------------------------------ ---------- --- ----------
+TBS_X	   /opt/oracle/oradata/FREE/55E54F210F100828E0630B00580ADFD0/datafile/o1_mf_tbs_x_ohk5w8wq_.d	     100 YES   33554432
+	   bf
+
+
+1 row selected.
+
+== 4. Limpieza: el tablespace de prueba se borra con su datafile ==
+
+Tablespace dropped.
+
+
+TBS_X_RESTANTES
+---------------
+	      0
+
+1 row selected.
+

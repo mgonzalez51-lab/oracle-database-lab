@@ -1,0 +1,78 @@
+== Alert log: /opt/oracle/diag/rdbms/free/FREE/trace/alert_FREE.log ==
+ORA-27303: additional information: error returned by chdir() is 2
+Starting ORACLE instance (normal) (OS id: 39)
+ORA-00800: soft external error, arguments: [Set Priority Failed], [VKTM], [Check traces and OS configuration], [Check Oracle document and MOS notes], []
+ORA-00800: soft external error, arguments: [Set Priority Failed], [LGWR], [Check traces and OS configuration], [Check Oracle document and MOS notes], []
+ALTER DATABASE   MOUNT
+Successful mount of redo thread 1, with mount id 1521389062
+Completed: ALTER DATABASE   MOUNT
+ALTER DATABASE OPEN
+Crash Recovery excluding pdb 2 which was cleanly closed.
+Crash Recovery excluding pdb 3 which was cleanly closed.
+Thread 1 opened at log sequence 7
+Successful open of redo thread 1
+PDB$SEED(2):Opening pdb with Resource Manager plan: DEFAULT_PLAN
+FREEPDB1(3):Opening pdb with Resource Manager plan: DEFAULT_PLAN
+Completed: Pluggable database FREEPDB1 opened read write 
+Completed: ALTER DATABASE OPEN
+FREEPDB1(3):ORA-959 signalled during: DROP TABLESPACE IF EXISTS tbs_x INCLUDING CONTENTS AND DATAFILES...
+FREEPDB1(3):Completed: CREATE TABLESPACE tbs_x
+FREEPDB1(3):Completed: DROP TABLESPACE tbs_x INCLUDING CONTENTS AND DATAFILES
+Shutting down ORACLE instance (immediate) (OS id: 2261)
+Shutting down instance: further logons disabled
+Completed: Pluggable database FREEPDB1 closed services=None
+Completed: alter pluggable database all close immediate
+ALTER DATABASE CLOSE NORMAL
+Completed: alter pluggable database all close immediate
+Completed: alter pluggable database all close immediate
+Completed: ALTER DATABASE CLOSE NORMAL
+ALTER DATABASE DISMOUNT
+Completed: ALTER DATABASE DISMOUNT
+Instance shutdown complete (OS id: 2261)
+Starting ORACLE instance (normal) (OS id: 2263)
+ORA-00800: soft external error, arguments: [Set Priority Failed], [VKTM], [Check traces and OS configuration], [Check Oracle document and MOS notes], []
+ORA-00800: soft external error, arguments: [Set Priority Failed], [LGWR], [Check traces and OS configuration], [Check Oracle document and MOS notes], []
+ALTER DATABASE MOUNT
+Successful mount of redo thread 1, with mount id 1521409868
+Completed: ALTER DATABASE MOUNT
+ALTER DATABASE OPEN
+Crash Recovery excluding pdb 2 which was cleanly closed.
+Crash Recovery excluding pdb 3 which was cleanly closed.
+Thread 1 opened at log sequence 7
+Successful open of redo thread 1
+PDB$SEED(2):Opening pdb with Resource Manager plan: DEFAULT_PLAN
+FREEPDB1(3):Opening pdb with Resource Manager plan: DEFAULT_PLAN
+Completed: Pluggable database FREEPDB1 opened read write 
+Completed: ALTER DATABASE OPEN
+== Reinicios con su hora (UTC) ==
+2026-07-05T21:59:58.148317+00:00 | Starting ORACLE instance (restrict) (OS id: 1194)
+2026-07-05T22:00:04.956394+00:00 | Completed: ALTER DATABASE OPEN
+2026-07-05T22:01:25.666703+00:00 | Shutting down ORACLE instance (immediate) (OS id: 1791)
+2026-07-05T22:01:58.309753+00:00 | Instance shutdown complete (OS id: 1791)
+2026-07-05T22:01:58.607092+00:00 | Starting ORACLE instance (normal) (OS id: 1898)
+2026-07-05T22:02:07.241924+00:00 | Completed: ALTER DATABASE OPEN
+2026-07-05T22:02:34.570778+00:00 | Shutting down ORACLE instance (immediate) (OS id: 2349)
+2026-07-05T22:02:42.260197+00:00 | Instance shutdown complete (OS id: 2349)
+2026-07-05T22:02:42.451459+00:00 | Starting ORACLE instance (normal) (OS id: 2351)
+2026-07-05T22:02:52.546495+00:00 | Completed: ALTER DATABASE OPEN
+2026-11-14T17:13:40.870434+00:00 | Starting ORACLE instance (normal) (OS id: 39)
+2026-11-14T17:13:44.816512+00:00 | Completed: ALTER DATABASE OPEN
+2026-11-14T17:40:24.955692+00:00 | Shutting down ORACLE instance (immediate) (OS id: 2261)
+2026-11-14T17:40:27.300592+00:00 | Instance shutdown complete (OS id: 2261)
+2026-11-14T17:40:27.390157+00:00 | Starting ORACLE instance (normal) (OS id: 2263)
+2026-11-14T17:40:30.134126+00:00 | Completed: ALTER DATABASE OPEN
+== Contexto de ORA-27303 ==
+1418-ORA-27300: OS system dependent operation:parse_df failed with status: 2
+1419-ORA-27301: OS failure message: No such file or directory
+1420-ORA-27302: failure occurred at: parse failed
+1421:ORA-27303: additional information: Filesystem      1K-blocks      Used Available Use% Mounted on
+1422-fuse-overlayfs 1073217536 181162244 892055292  17% /
+1423-LICENSE_MAX_SESSION = 0
+--
+1552-ORA-07427: spstp: cannot change directory to dbs.
+1553-ORA-27300: OS system dependent operation:chdir() failed with status: 2
+1554-ORA-27301: OS failure message: No such file or directory
+1555-ORA-27302: failure occurred at: spstp:9
+1556:ORA-27303: additional information: error returned by chdir() is 2
+1557-2026-11-14T17:13:40.870434+00:00
+1558-Adjusting the default value of parameter "parallel_max_servers" from 0 to 1.
