@@ -253,3 +253,48 @@ Con RMAN sobrarían:
 - los **tempfiles**, que tampoco entran en la copia en frío.
 
 Además RMAN no copia los bloques que nunca se han usado, así que la copia saldría bastante más pequeña que esos 4,6 GB, y se podría hacer con la base abierta porque estoy en ARCHIVELOG.
+
+## Parte K — Anatomía de una página: del tablespace al byte
+
+`TBS_ACADEMIA` es BIGFILE, con gestión local, AUTOALLOCATE y ASSM, y bloques de 8192. `ACA_ESTUDIANTES` tiene 16 extensiones de 64 KB y luego una de 1 MB, que es como reparte AUTOALLOCATE (evidencia 12, bloque).
+
+**El ROWID de la fila 101.** `AAAR2lAAAAAAAMPAAF` se divide en objeto, archivo, bloque y fila (base 64 con A=0 … Z=25, a=26 … z=51, 0=52 … 9=61):
+
+| Trozo | Caracteres | Cálculo | Valor | Lo confirma |
+|---|---|---|---|---|
+| Objeto | `AAAR2l` | 17·64² + 54·64 + 37 | 73125 | `DATA_OBJECT_ID` de `ACA_ESTUDIANTES` |
+| Archivo | `AAA` | 0 | 0 | En BIGFILE esos bits son parte del bloque |
+| Bloque | `AAAAMP` | 12·64 + 15 | 783 | El volcado del bloque 783 |
+| Fila | `AAF` | 5 | 5 | `tab 0, row 5` en el volcado |
+
+El archivo real es el 16 (`academia01.dbf`), que se saca con `ROWID_TO_ABSOLUTE_FNO`; `RELATIVE_FNO` sale 1024, que en BIGFILE no es un número de archivo de verdad.
+
+**La fila por dentro.** `DUMP()` enseña que el `101` se guarda como `c2 02 02` (NUMBER en base 100: 0xc2 indica dos "dígitos", y cada dígito lleva +1, o sea 1·100 + 1), el DNI y los textos en ASCII (`30` es el carácter `0`) y la fecha como TIMESTAMP de 11 bytes. La fila ocupa 78 bytes en el bloque (`tl: 78`): 68 de datos (la suma de `VSIZE`), 7 bytes de longitud, uno por columna (`cc: 7`), y 3 de cabecera (flag, lock y número de columnas). En el volcado también se lee en ASCII `Apellido101` y `est101@alu.ucam.edu`.
+
+**Cómo de llenos están.** 230 bloques llenos, 1 con 25-50 % libre y 13 casi vacíos, en total 244, los mismos bloques que leyó el recorrido completo de la Parte G. Los 13 casi vacíos son el final del segmento: espacio ya asignado que aún no se ha llenado.
+
+**Punto de control.**
+
+- `avsp = fseo − fsbo`: 0x427 − 0xc6 = 0x361, en decimal 1063 − 198 = 865 bytes libres. Con `tsiz` = 0x1f98 = 8088 bytes útiles, el `PCTFREE 10` reserva 809. Otra fila de 78 bytes más su ranura de 2 dejaría 785, por debajo de 809, por eso el bloque se quedó en 90 filas.
+- La fecha de la fila 101 sale de `78 7e 0b 0e 12 18 13`: siglo 120−100 = 20, año 126−100 = 26, mes 11, día 14, hora 18−1 = 17, minuto 24−1 = 23 y segundo 19−1 = 18, o sea **2026-11-14 17:23:18**, y `30 59 bf 20` son 811188000 nanosegundos. Es justo el momento en que apliqué V002 (su spool se llama `20261114T172318Z_04-V002...`).
+- La ranura 1 de la ITL tiene `--U-` y `Lck 90`: la transacción de V002 que insertó las 90 filas está confirmada pero el bloque no se ha limpiado (limpieza diferida). Si ahora un `UPDATE` cambiara la fila 101 usaría la ranura 2, que está libre, y al tocar el bloque Oracle comprobaría que la transacción de la ranura 1 ya está confirmada y le pondría el `Lck` a 0.
+
+**P18:** B. Sin el segundo argumento `ROWID_BLOCK_NUMBER` da por hecho que el tablespace es SMALLFILE y reparte los bits entre archivo relativo y bloque; en BIGFILE esos bits son todos del bloque y hay que pasarle `'BIGFILE'`, como hace el script.
+
+**P19:** A y B. Un bloque deja de aceptar `INSERT` cuando su espacio libre baja del 10 %, y ese 10 % se reserva para que las filas que ya están puedan crecer con `UPDATE` (lo vi con los 809 bytes del bloque 783). No es solo para la ITL, sí afecta a tablas y una fila puede migrar igualmente si crece más de lo que queda libre.
+
+## Parte K — Reto: abrir otro bloque
+
+Hice una copia del script para el estudiante 19500 (`scripts/lab4/12-reto-bloque.sql`) y su traza está en la evidencia como `12-reto-volcado-bloque`. La fila está en el bloque 1158, que ya cae dentro de la extensión de 1 MB (empieza en el 1152), ranura 77.
+
+| | Bloque 783 (fila 101) | Bloque 1158 (fila 19500) |
+|---|---|---|
+| Bytes de la fila (`tl`) | 78 | 84 |
+| Filas en el bloque (`nrow`) | 90 | 85 |
+| Cabecera (`hsiz`) | 0xc6 (198) | 0xbc (188) |
+| Libre (`avsp`) | 0x361 (865) | 0x33a (826) |
+| ITL ranura 1 | `--U-`, `Lck 90` | `--U-`, `Lck 85` |
+
+Las filas del final son más largas porque los ID tienen cinco cifras (`Nombre19500`, `est19500@alu.ucam.edu`) y el estado es `EGRESADO` en vez de `ACTIVO`, así que caben 85 en vez de 90. La cabecera es 10 bytes más pequeña porque el directorio tiene 5 ranuras menos y cada una ocupa 2 bytes. El libre también cuadra: 0x3f6 − 0xbc = 1014 − 188 = 826, y otra fila de 84 + 2 bajaría de los 809 de PCTFREE.
+
+Y sí, también hay limpieza diferida: la ranura 1 tiene el mismo `Xid` (`0x0004.006.000002ae`) y el mismo SCN que el bloque 783, o sea que es la misma transacción de V002, y el `Lck` coincide con el número de filas del bloque (85), porque V002 bloqueó todas las que insertó. El ID también se lee en base 100: `c3 02 60` son tres dígitos, 1 y 95, o sea 1·100² + 95·100 = 19500.
