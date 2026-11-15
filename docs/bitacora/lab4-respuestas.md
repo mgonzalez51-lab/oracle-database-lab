@@ -346,3 +346,23 @@ Guardé el cálculo en `scripts/lab4/13-reto-matriculas.sql`. Con r = 60000 y R 
 Aquí la fórmula falla mucho más que con estudiantes: un 49 % por debajo (248 frente a 370), cuando con estudiantes era un 16 %. Creo que es porque las filas de matrículas son muy cortas (30 bytes) y cada fila paga en el bloque unos bytes fijos: la cabecera, un byte de longitud por columna y los 2 de la ranura. Con lo medido sale 8088 × 0,9 / 199,3 ≈ 36,5 bytes por fila en el bloque, o sea unos 6,5 bytes de sobrecoste para una fila de 30, más del 20 %. En una fila de 76 eso apenas se nota. Además hay 69 bloques bajo la HWM que no tienen filas (370 − 301), porque ASSM formatea bloques por adelantado y no todos se llegan a usar. Conclusión: la fórmula sirve para tener el orden de magnitud, pero para filas cortas hay que medir.
 
 Un recorrido completo en un HDD a 150 MB/s tardaría 370 × 8 KB / 150 MB/s ≈ 19 ms.
+
+## Parte M — Filas migradas y encadenadas
+
+Usé el banco de pruebas de la Parte L (`LAB4_PRUEBAS` en `TBS_LAB4`) y al final se borró entero; comprobé también desde Linux que el archivo `lab4_pruebas01.dbf` ya no está en el volumen (evidencia 14).
+
+**Provocarla.** Creé `MIGRA` con `PCTFREE 0` y 5000 filas de 1 byte: 13 bloques y `CHAIN_CNT 0`. Después agrandé una de cada cinco filas a 300 bytes y, como no había hueco en sus bloques, migraron: la tabla pasó a 58 bloques y `CHAIN_CNT` a 1000, el 20 %, que son justo las filas con id múltiplo de 5. `CHAIN_CNT` solo lo rellena `ANALYZE`, `DBMS_STATS` no lo calcula, y además no distingue migradas de encadenadas, eso hay que razonarlo.
+
+**Detectarla.** Con `ANALYZE ... LIST CHAINED ROWS` salen las 1000 una a una. La primera es el id 735, que tiene la cabeza en el bloque 5643 del archivo 25, ranura 1.
+
+**Lo que cuesta.** 1000 búsquedas por clave hicieron 3200 lecturas lógicas, 3,2 por búsqueda, y `table fetch continued row` subió 200. Una búsqueda normal son 3 lecturas (dos niveles de índice y el bloque de la tabla) y las 200 migradas cuestan 4, porque hay que ir a la cabeza y luego a donde está la fila de verdad: (800 × 3 + 200 × 4) / 1000 = 3,2. Es un 7 % más de trabajo en cada acceso, y eso no se va solo.
+
+**Verla en el bloque.** En el volcado la fila del bloque original sale con `fb: --H-----`, `cc: 0` y `nrid: 0x00001622.25a`. Solo queda la cabeza (Head), sin First ni Last, o sea que los datos no están ahí, y `nrid` dice dónde viven ahora: como es BIGFILE, lo de antes del punto es directamente el bloque, 0x1622 = 5666, y lo de después la ranura. Una fila normal tiene `fb: --H-FL--`, como la 101 de la Parte K.
+
+**Encadenamiento.** En `ANCHA` metí una fila de unos 12000 bytes, que no cabe en ningún bloque de 8 KB, y salió `CHAIN_CNT 1` (la fila corta no cuenta). Esto no es migración: la fila no cabe en ningún bloque, así que reorganizar no lo arregla. Solo se arregla con un bloque más grande (un tablespace de 16 o 32 KB) o separando las columnas grandes.
+
+**Curarla.** `ALTER TABLE ... MOVE PCTFREE 20` reescribe todas las filas y deja `CHAIN_CNT` a 0, pero cambia los ROWID y el índice `PK_MIGRA` se queda `UNUSABLE`, porque apunta a las direcciones viejas. Después de `ALTER INDEX ... REBUILD` vuelve a estar `VALID`. La tabla queda en 63 bloques, más que los 58 de antes, porque ahora cada bloque deja un 20 % libre para que las filas puedan crecer. En producción usaría `MOVE ONLINE`, que mantiene los índices válidos y no bloquea el DML.
+
+**P22:** A y C. `LIST CHAINED ROWS` dice qué filas son y `MOVE ONLINE` con un `PCTFREE` mayor las reescribe sin bloquear. `DBMS_STATS` no rellena `CHAIN_CNT`, y vaciar la caché o tocar el multibloque no tiene nada que ver.
+
+**P23:** B. Si la fila mide 12000 bytes y el bloque 8 KB, está encadenada, y `MOVE` no lo arregla porque no cabe en ningún bloque, igual que me pasó con `ANCHA`.
