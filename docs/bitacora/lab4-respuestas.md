@@ -372,3 +372,93 @@ Usé el banco de pruebas de la Parte L (`LAB4_PRUEBAS` en `TBS_LAB4`) y al final
 La autopsia está en `docs/bitacora/lab4-autopsia.md` y la verificación final (`16-verificacion-final.sh`) me dio todo OK en las 35 comprobaciones.
 
 **P24:** B. Para un informe diario lo correcto es un usuario común de solo lectura con `SELECT_CATALOG_ROLE`, `CONTAINER_DATA` y el grant puntual de `V_$DIAG_ALERT_EXT`, que es justo `C##OPS_RO`. Con SYS, DBA o SYSTEM el script podría cambiar cualquier cosa, y con la contraseña en el script o en una variable de entorno cualquiera que lo lea la tiene.
+
+## Preguntas de comprobación
+
+### Respaldo y diagnóstico (A)
+
+**1.** Es consistente porque la hice en frío: `backup-estado.sh` hace `SHUTDOWN IMMEDIATE`, que hace checkpoint y cierra todos los archivos con el mismo SCN, y después para el contenedor antes de copiar el volumen (evidencia 00, paso 4). Si la copiara con la base abierta, cada archivo quedaría copiado en un momento distinto mientras DBWn sigue escribiendo, y al restaurarla Oracle encontraría datafiles con SCN diferentes y no abriría sin una recuperación que con una copia de ficheros no se puede hacer.
+
+**2.** `manifiesto.txt` dice qué es la copia (etiqueta `lab3-final`, fecha, volumen, imagen, commit `6f3c918` y 0 archivos fuera del volumen) y `SHA256SUMS` guarda la huella de cada archivo para comprobar que no se ha estropeado (mis 4 líneas salieron `OK`). `restaurar-estado.sh`, antes de tocar nada, comprueba que Docker responde, verifica la copia con `sha256sum --check` y me pide escribir el nombre del volumen para confirmar; si algo falla se para sin haber borrado nada.
+
+**3.** RPO es cuántos datos puedo perder y RTO cuánto tardo en volver a dar servicio. Con mi copia de la Parte A, el RPO es todo lo que pasó desde el 2026-11-13 a las 18:42 UTC hasta el fallo, porque es una copia en frío puntual. El RTO no lo he medido porque no hice un simulacro de restauración; la copia tardó unos 2 min y la base arrancó en unos 5 s en la Parte E, así que calculo unos 3-5 min, pero eso habría que comprobarlo restaurando de verdad.
+
+### Correcciones del Lab 3 (C, D)
+
+**4.** En `$ORACLE_HOME/dbs` (evidencia 01, file# 16 a 20), porque en V000 puse rutas relativas (`'academia01.dbf'`) y `db_create_file_dest` estaba vacío. Lo habría evitado `db_create_file_dest`, que es justo lo que activé en el reto de la Parte C.
+
+**5.** Porque `RENAME DATAFILE` solo cambia la ruta que tiene guardada el control file, no mueve el archivo. Primero hay que copiarlo con el sistema operativo con el tablespace OFFLINE y después hacer el `RENAME` y ponerlo ONLINE.
+
+**6.** V000 ya está aplicada en la base y en el historial de Git; si la edito, el repositorio deja de describir lo que de verdad se ejecutó y otra base creada desde cero quedaría distinta. Lo correcto es una migración nueva, V003. Y borrar la contraseña del archivo no sirve porque sigue en el historial de Git y sigue funcionando en la base: invalidarla hace que deje de servir. Lo demostré en la evidencia 04: antes de V003 entraba como `ADMIN_ACADEMIA` y después daba `ORA-01017`.
+
+**7.** Que todo el estado de la base vive en el volumen y el contenedor se puede tirar y crear otra vez: antes y después salen los mismos tablespaces y las mismas tablas (evidencia 03, 15 s en total). Se hace después de reubicar porque si algún datafile hubiera estado fuera del volumen el `docker rm` se lo habría llevado.
+
+### Instancia, arranque y parámetros (E, F)
+
+**8.** De la instancia: `HOST_NAME = 459c04bb7fae`, `ARRANCADA = 2026-11-14 17:13:41` y los 56-60 procesos `db_*_FREE`. De la base: `DBID = 1509902213`, `CREADA = 2026-07-05` y los 16 datafiles (evidencia 05).
+
+**9.** En NOMOUNT lee el SPFILE y crea la SGA y los procesos, por eso `v$parameter` responde pero `v$database` da `ORA-01507`, porque todavía no ha leído el control file. En MOUNT abre los control files y ya conoce la estructura (`v$database`, 16 datafiles), pero `dba_tables` da `ORA-01219` porque el diccionario está en SYSTEM, que sigue cerrado. En OPEN abre los datafiles y el redo (evidencia 06).
+
+**10.** `v$parameter` es lo que la instancia usa en memoria y `v$spparameter` lo que está escrito en el SPFILE. Con `db_files` se ve: en memoria da `ORA-02095`, y con `SCOPE = SPFILE` salía 200 en memoria y 300 en el SPFILE, pendiente del siguiente arranque; con `RESET` la línea desapareció (evidencia 07, cambios).
+
+**11.** Porque la tabla de procesos se dimensiona en la SGA al arrancar y no se puede ampliar en caliente, aunque la vista lo marque `IMMEDIATE`. Me dio `ORA-02097` + `ORA-02095`, así que solo se cambia con `SCOPE = SPFILE` y reinicio.
+
+### Memoria y procesos (G, H)
+
+**12.** ASMM: `memory_target = 0`, `sga_target = 1536M` y `pga_aggregate_target = 512M` (evidencia 08, memoria). La SGA se reparte sola y la PGA va aparte.
+
+**13.** Con la caché vacía la ronda 1 hizo 357 lecturas lógicas y 262 físicas (26,6 % de acierto), y la ronda 2 247 lógicas y 0 físicas (100 %). Las lógicas no bajan porque toda lectura física termina en una lógica; lo que se ahorra es ir a disco (evidencia 08, caché).
+
+**14.** Con literales: 1008 análisis duros, 530 ms de CPU solo analizando, 570 ms en total, 854 cursores y 31791 KB en la shared pool. Con `:id`: 1 análisis, 10 ms, 1 cursor y 39 KB. Un minuto después ya solo quedaban 740 cursores de los literales, la shared pool había echado 114 (evidencias 08 parse y reto).
+
+**15.** LGWR tiene el SPID 2318 en `v$process` y en `/proc` del contenedor el 2318 es `db_lgwr_FREE`. `docker top` lo enseña como 12762 porque muestra el PID del anfitrión y el contenedor tiene su propio espacio de nombres de PID (evidencia 09).
+
+### Contenedores (I)
+
+**16 a 20** están respondidas en la Parte I, arriba.
+
+### Archivos (J)
+
+**21.** Son la base: los 16 datafiles, los 3 tempfiles, los 2 control files y los 3 grupos de redo online. Relacionados: los 6-7 redo archivados, el SPFILE, el password file y el ADR (evidencia 11). El password file es relacionado porque no guarda datos, solo quién puede entrar como SYSDBA por red; si se pierde, la base sigue y se recrea con `orapwd`.
+
+**22.** 104865792 = 100 × 1048576 + 8192: los 100 MB que dice `v$datafile` más un bloque de 8 KB, el bloque 0, que es la cabecera del archivo y Oracle no lo cuenta como espacio útil.
+
+**23.** Los 2 control files están en la misma carpeta (`FREE/`) y cada grupo de redo tiene un solo miembro. Si se pierde ese disco o se corrompe un redo, no hay copia.
+
+**24.** Porque al recrear el contenedor se pierde la historia del alert log, que es lo primero que se mira en un incidente. A mí me pasó: el alert log saltó del 5 de julio al 14 de noviembre y desapareció todo lo del Lab 3 (Parte J).
+
+### Bloque y fila (K)
+
+**25.** `AAAR2lAAAAAAAMPAAF` = objeto `AAAR2l` (73125) + archivo `AAA` (0, en BIGFILE son bits del bloque) + bloque `AAAAMP` (783) + fila `AAF` (5). Coincide con `ROWID_OBJECT`, con `ROWID_BLOCK_NUMBER(..., 'BIGFILE')` y con `ROWID_ROW_NUMBER` (evidencia 12, tabla completa en la Parte K).
+
+**26.** `nrow` es cuántas filas tiene el bloque (90), `fsbo` dónde empieza el espacio libre (0xc6), `fseo` dónde acaba (0x427) y `avsp` cuánto hay libre. 0x427 − 0xc6 = 0x361, en decimal 1063 − 198 = 865 bytes.
+
+**27.** La ranura 1 de la ITL es la transacción de V002 que insertó las 90 filas: `--U-` quiere decir que está confirmada y `Lck 90` que las 90 filas aún tienen su marca de bloqueo apuntando a ella. La limpieza diferida es que Oracle no limpia esas marcas al hacer `COMMIT` (sería tocar miles de bloques), sino la próxima vez que alguien modifica el bloque y comprueba que la transacción ya terminó. En el bloque 1158 sale lo mismo con `Lck 85` y el mismo `Xid`.
+
+**28.** 78 = 68 bytes de datos (la suma de `VSIZE`) + 7 bytes de longitud, uno por columna (`cc: 7`) + 3 de cabecera de la fila (flag, lock y número de columnas).
+
+### Capacidad y coste (L)
+
+**29.** bfr = floor((8192 − 96) × 0,9 / 76) = 95 y b = ceil(20000 / 95) = 211 bloques. La tabla tiene 244 porque cada fila ocupa más que `AVG_ROW_LEN` en el bloque (78 bytes la 101), las filas no son todas iguales (68 a 95 por bloque, 231 bloques con filas) y hay 13 casi vacíos al final del segmento (evidencia 13).
+
+**30.** Lectura lógica 1,35 µs, física aleatoria 7,7 µs y secuencial 18 ms / 4595 bloques ≈ 3,9 µs por bloque (evidencia 13, 5a-5c).
+
+**31.** Con HDD: c_sec = 8192 / 150 MB/s ≈ 52 µs por bloque y c_aleat = 5 ms, el cociente es 0,0104 y el umbral (1/86) × 0,0104 ≈ 0,012 % de las filas. Con un disco lento casi cualquier consulta que devuelva algo más de un puñado de filas va mejor con un recorrido completo.
+
+**32.** Porque el `FLUSH BUFFER_CACHE` vacía la caché de Oracle pero no la de Linux, y la mayoría de esas lecturas salen de la RAM del sistema. No invalida el método, solo los números: la media de la instancia desde el arranque fue de 464 µs por `db file sequential read`, mucho más parecido a un disco de verdad.
+
+### Filas migradas y encadenadas (M)
+
+**33.** Migración: un `UPDATE` agranda una fila que ya no cabe en su bloque, se va a otro y deja la cabeza con su dirección (`nrid`); se cura con `MOVE` y un `PCTFREE` adecuado. Encadenamiento: la fila no cabe en ningún bloque y se parte en piezas; no se cura reorganizando, solo con un bloque mayor o cambiando el diseño. Las dos se detectan con `ANALYZE` (`CHAIN_CNT`, `LIST CHAINED ROWS`) y con la estadística `table fetch continued row` (evidencia 14).
+
+**34.** Una búsqueda normal son 3 lecturas (dos niveles de índice y la tabla) y las 200 filas migradas cuestan 4, porque hay que ir a la cabeza y después a donde está la fila: (800 × 3 + 200 × 4) / 1000 = 3,2.
+
+**35.** `MOVE` reescribe todas las filas y les cambia el ROWID, y el índice sigue apuntando a los viejos, así que queda `UNUSABLE`. En producción usaría `ALTER TABLE ... MOVE ONLINE`, que mantiene los índices válidos y no bloquea el DML, y después recogería estadísticas.
+
+### Autopsia y trabajo profesional (N, O)
+
+**36.** De `lab4-autopsia.md`: (1) ARCHIVELOG sin FRA, 7 archivados y 1053 MB en `dbs` → pueden llenar el disco → FRA con tamaño máximo (Lab 5) → alta. (2) Control files en la misma carpeta y un miembro por grupo de redo → punto único de fallo → multiplexar (Lab 5) → alta. (3) ADR fuera del volumen → se pierde la historia del alert log al recrear el contenedor → `diagnostic_dest` persistente o logs centralizados → media.
+
+**37.** Porque para observar solo hace falta mirar: SYSTEM puede crear, borrar y cambiar casi todo, y si su contraseña se filtra desde una herramienta de monitorización el daño puede ser enorme. `C##OPS_RO` no puede escribir nada (en la Parte B me dio `ORA-01031` al hacer `CREATE TABLE`), no tiene ningún privilegio `ANY` (lo comprueba la verificación final) y no puede leer los datos de negocio.
+
+**38.** (1) La contraseña de SYS en la línea de comandos: el 08 del Lab 3 montaba `sys/$ORACLE_PWD@...` y se veía con `ps`; el 08 v2 usa `/ as sysdba`. Además el 05 v2 ya no pasa `ORACLE_PWD` al contenedor y no queda en `docker inspect`. (2) Las contraseñas de los `admin_*` escritas en V000 y en el historial de Git, que V003 deja sin valor con `NO AUTHENTICATION`.
