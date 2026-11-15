@@ -1,0 +1,6 @@
+r = 60000 filas  ??  R = 30 bytes  ??  PCTFREE = 10 %
+Prediccion Unidad 3 : bfr = floor((8192-96)*0,9/30) = 242 -> b = 248 bloques
+Prediccion Oracle   : bfr = floor((8192-122)*0,9/(30+2)) = 226 -> b = 266 bloques
+Medido		    : 199.3 filas por bloque de media en 301 bloques con filas
+Real		    : 370 bloques bajo la HWM ?? 384 bloques asignados al segmento
+Recorrido completo en HDD a 150 MB/s: 370 x 8 KB / 150 MB/s = 19 ms

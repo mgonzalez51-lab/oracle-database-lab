@@ -298,3 +298,51 @@ Hice una copia del script para el estudiante 19500 (`scripts/lab4/12-reto-bloque
 Las filas del final son más largas porque los ID tienen cinco cifras (`Nombre19500`, `est19500@alu.ucam.edu`) y el estado es `EGRESADO` en vez de `ACTIVO`, así que caben 85 en vez de 90. La cabecera es 10 bytes más pequeña porque el directorio tiene 5 ranuras menos y cada una ocupa 2 bytes. El libre también cuadra: 0x3f6 − 0xbc = 1014 − 188 = 826, y otra fila de 84 + 2 bajaría de los 809 de PCTFREE.
 
 Y sí, también hay limpieza diferida: la ranura 1 tiene el mismo `Xid` (`0x0004.006.000002ae`) y el mismo SCN que el bloque 783, o sea que es la misma transacción de V002, y el `Lck` coincide con el número de filas del bloque (85), porque V002 bloqueó todas las que insertó. El ID también se lee en base 100: `c3 02 60` son tres dígitos, 1 y 95, o sea 1·100² + 95·100 = 19500.
+
+## Parte L — Capacidad y coste: factor de bloqueo, páginas y tiempo
+
+**Predicción frente a realidad en `ACA_ESTUDIANTES` (evidencia 13, capacidad).**
+
+| Cálculo | bfr | Bloques |
+|---|---|---|
+| Unidad 3 (H = 96, R = 76, PCTFREE 10) | 95 | 211 |
+| Versión Oracle (H = 122 con ITL, R + 2 por la ranura) | 93 | 216 |
+| Medido (filas por bloque, entre 68 y 95) | 86,6 | 231 con filas |
+| Estadísticas (bajo la HWM) | — | 244 |
+| Asignado al segmento | — | 256 |
+
+La fórmula acierta el orden de magnitud pero se queda corta: usa la longitud media de la fila y no cuenta que en el bloque cada fila ocupa más (en la Parte K vi que la fila 101 ocupa 78 bytes en el bloque y no 68), que las filas no miden todas lo mismo, que hay 13 bloques casi vacíos al final (244 − 231) y que el espacio se asigna por extensiones enteras (256).
+
+**El coste de una lectura en mi contenedor.**
+
+| Lectura | Medida |
+|---|---|
+| Lógica (bloque en la buffer cache) | 1,35 µs, 4 por búsqueda (raíz, rama, hoja y tabla) |
+| Física aleatoria (1 bloque) | 7,7 µs |
+| Secuencial (por bloque) | 18 ms / 4595 bloques ≈ 3,9 µs, unos 87 bloques por petición, ≈ 2 GB/s |
+
+Con esto el umbral sale en el 0,59 % de las filas: si una consulta devuelve más, leer la tabla entera es más barato que ir por el índice.
+
+Estas lecturas "físicas" son demasiado rápidas para ser de disco. El `FLUSH BUFFER_CACHE` vacía la caché de Oracle pero no la de Linux, así que casi todas se sirvieron desde la RAM del sistema. Lo comprobé con la sección 6: la media de toda la instancia desde el arranque es de 464 µs por `db file sequential read`, unas 60 veces más que mis 7,7 µs, porque ahí sí entran las lecturas en frío del arranque, que fueron al disco virtual de WSL. Esos 464 µs se parecen mucho más a un SSD de verdad. En un servidor real se mediría igual y saldría entre 0,1 ms (SSD) y 5-10 ms (HDD), y con un HDD el umbral bajaría a una centésima de punto porcentual.
+
+**Calcular antes de ejecutar.** Con `LECTURAS` (400000 filas, 4676 bloques, unos 86 por bloque), una consulta que devuelve el 2 % (8000 filas) con un índice desordenado tendría que leer 8000 bloques de uno en uno: en el contenedor 8000 × 7,7 µs ≈ 62 ms, con SSD 0,8 s y con HDD 40 s. El recorrido completo son 18 ms en el contenedor y unos 0,25 s en HDD. Gana el recorrido completo en todos los casos, porque el 2 % está muy por encima del umbral.
+
+**P20:** B. bfr = floor((8192 − 96) × 0,9 / 180) = floor(40,48) = 40 filas por bloque, y b = ceil(2000000 / 40) = 50000 bloques.
+
+**P21:** B. `db file scattered read` son lecturas multibloque que van a la buffer cache, lo normal en un recorrido completo. Las de un bloque son `db file sequential read` y las que se saltan la caché, `direct path read`.
+
+## Parte L — Reto: dimensionar ACA_MATRICULAS
+
+Guardé el cálculo en `scripts/lab4/13-reto-matriculas.sql`. Con r = 60000 y R = 30:
+
+| | bfr | Bloques |
+|---|---|---|
+| Predicción Unidad 3 | 242 | 248 |
+| Predicción Oracle | 226 | 266 |
+| Medido | 199,3 | 301 con filas |
+| Real bajo la HWM | — | 370 |
+| Asignado | — | 384 |
+
+Aquí la fórmula falla mucho más que con estudiantes: un 49 % por debajo (248 frente a 370), cuando con estudiantes era un 16 %. Creo que es porque las filas de matrículas son muy cortas (30 bytes) y cada fila paga en el bloque unos bytes fijos: la cabecera, un byte de longitud por columna y los 2 de la ranura. Con lo medido sale 8088 × 0,9 / 199,3 ≈ 36,5 bytes por fila en el bloque, o sea unos 6,5 bytes de sobrecoste para una fila de 30, más del 20 %. En una fila de 76 eso apenas se nota. Además hay 69 bloques bajo la HWM que no tienen filas (370 − 301), porque ASSM formatea bloques por adelantado y no todos se llegan a usar. Conclusión: la fórmula sirve para tener el orden de magnitud, pero para filas cortas hay que medir.
+
+Un recorrido completo en un HDD a 150 MB/s tardaría 370 × 8 KB / 150 MB/s ≈ 19 ms.
