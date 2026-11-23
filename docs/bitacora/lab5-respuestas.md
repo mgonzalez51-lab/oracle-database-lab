@@ -158,3 +158,96 @@ Issue #9 · rama `chore/9-oracle-dba-workflow-ii` · evidencias en `docs/bitacor
 - **Retrospectiva.** Lo que me sorprendió: que en D Oracle cerrara la PDB entera (en el simulacro el RTO afecta a toda FREEPDB1, no solo al tablespace) y lo rápido que es todo con la base pequeña y en SSD. Lo que cambiaría: en un entorno real, copias RMAN programadas en vez de copias en frío (para no depender de restaurar toda la base como en C) y las copias de control file y redo en discos distintos. Una copia que no se ha restaurado nunca no es una copia.
 - **Reto O.** Runbook en `docs/runbooks/perdida-datafile.md`.
 - **O1 → B.** **O2 → B y D.** **O3 → B** (C olvida el RECOVER). **O4 → D.**
+
+## Parte P: runbook de salud y verificación final
+
+- `16-verificacion-final.sh`: todas las comprobaciones en OK y «RESULTADO: TODO OK. Lab 5 listo para entregar.» (evidencia 16).
+- Healthcheck con C##OPS_RO (evidencia 15): FRA con 112 de 4096 MB (2,7 %), 3 control files, 0 grupos de redo con un solo miembro, una copia RMAN COMPLETED de 38 MB en 3 s (la del simulacro D), 4 esquemas ADMIN_* sin estadísticas (igual que en la autopsia del Lab 4), 0 ORA-01555 y la consulta más larga de 356 s (la curva de la Parte E con el índice malo al 100 %).
+- Cambios de log por hora: 1, 1, 3, 7 y 7. Las dos últimas horas superan los 4 que usé para dimensionar en el reto K, por los simulacros y los SWITCH manuales.
+
+## Preguntas de comprobación
+
+**1.** En la copia lab3-final, el paso 6 listaba cinco datafiles fuera del volumen; en la lab4-final pone «ninguno: el volumen contiene toda la base de datos» (evidencia 00). Demuestra que la reubicación del Lab 4 funcionó.
+
+**2.** CLIENTE: 100 000 / 1517 = 66 filas por bloque; PEDIDO: 1 000 000 / 5320 = 188 (evidencia 01). PEDIDO cabe casi el triple porque su fila mide 32 bytes y la de CLIENTE 102 (102 / 32 ≈ 3,2; 188 / 66 ≈ 2,85).
+
+**3.** Porque la primera ejecución incluye trabajo que solo se hace una vez: el análisis duro, las lecturas físicas para traer bloques a la caché y la limpieza diferida de bloques. Lo vi en el reto M: el INSERT de 10 000 filas generó 4824 KB de redo la primera vez y 3895 KB la segunda.
+
+**4.** IX_PED_CLIENTE: altura 3, 2216 hojas, fan-out real 370 y máximo 543 (evidencia 02). Con mil millones de filas: 2 208 969 hojas y altura 4 (5 lecturas para encontrar una fila).
+
+**5.** En la hoja de PK_CLIENTE, `row#0` tiene `data:(6): 00 00 03 1b 00 00` y la clave `c1 02` (el 1): bloque 0x31B = 795 y ranura 0, que coincide con DBMS_ROWID para el cliente 1. No aparece el archivo porque TBS_TIENDASUR es BIGFILE: tiene un único archivo, así que el índice guarda un ROWID de 6 bytes (4 de bloque y 2 de ranura).
+
+**6.** (evidencia 03) Único en DNI: 1486 lecturas sin índice y 3 con él, porque baja por el árbol a una sola hoja. Cubriente para Q7: 15 con IX_PED_CLIENTE (y un SORT), 7 con (id_cliente, fecha) y 3 con el cubriente, que devuelve las filas ya ordenadas y no toca la tabla. Bitmap para Q14: 4073 sin bitmaps y 528 con cuatro, porque BITMAP AND combina los filtros antes de tocar la tabla.
+
+**7.** IX_PED_FECHA tiene CF 5220 (los bloques con filas) porque los pedidos se cargaron en orden de fecha: filas vecinas en el índice están en el mismo bloque. IX_PED_CLIENTE tiene 999 041 (casi las filas) porque el cliente se repartió al azar (evidencia 04). Un REBUILD no lo arregla: el CF depende del orden de la tabla, no del índice.
+
+**8.** Con CF malo, el índice lee más que la tabla a partir del ≈ 0,54 %, y la fórmula de la Unidad 3 da 1 / bfr = 1 / 188 = 0,53 %. El optimizador cambia antes, entre el 0,1 % y el 0,2 %, porque supone c_sec / c_aleat = 1/5 (0,11 %). Con CF bueno compensa hasta un ≈ 66 % (gráfico `lab5/img/lab5-curva-equilibrio.png`).
+
+**9.** 'Gonz%' es sargable y usa el índice, pero son 2056 clientes (2,1 %) con CF malo: 2024 lecturas, más que las 1486 del recorrido completo (evidencia 05). Está por encima del punto de equilibrio de CLIENTE (1/66 ≈ 1,5 %). Lo elige mal porque APELLIDOS no tiene histograma.
+
+**10.** INSERT: 10,1 bloques por fila con 4 índices, 20,4 con 9 y 12,1 con V005 (5) (evidencia 06). Rechacé IX_PED_CANAL e IX_PED_ESTADO porque no son viables para igualdad (3 y 4 valores: 33 % y 25 % por valor); IX_PED_FEC_CLI porque MONITORING USAGE lo marcó sin uso; e IX_PED_CLI_FEC porque el cubriente de V005 ya empieza por las mismas columnas.
+
+**11.** (evidencia 07) IX_AZAR, divisiones 50/50: 595 divisiones, 0 de 90/10, hojas al 75,4 % y un histograma repartido entre el 40 y el 99 %. IX_CRECIENTE, divisiones 90/10: 398 divisiones, todas 90/10, hojas al 99,9 % y el mapa entero con `#`. IX_COLA, patrón cola: 224 hojas vacías de 425, el mapa vacío a la izquierda y lleno a la derecha, y 226 lecturas para el mensaje más antiguo.
+
+**12.** COALESCE: es en línea, no bloquea y resuelve el síntoma (226 → 2 lecturas). Si además quisiera devolver el espacio, SHRINK SPACE (4 → 1,69 MB). La cura de verdad es de diseño: particionar por fecha y vaciar particiones enteras.
+
+**13.** El SCN de checkpoint del control file (`v$datafile.checkpoint_change#`) frente al de la cabecera de cada datafile (`v$datafile_header`). Tras ALTER SYSTEM CHECKPOINT, los dos quedaron en 5 646 633 (evidencia 08).
+
+**14.** Protege de borrar o corromper uno de los archivos: el simulacro B lo demostró. No protege de perder el disco o el volumen, porque las tres copias se irían juntas. En producción, cada copia va en un disco (y si se puede, en una controladora) distinto, con el autobackup de RMAN.
+
+**15.** CURRENT: LGWR está escribiendo en él. ACTIVE: ya no es el actual, pero sus cambios no están todos en los datafiles. INACTIVE: se puede reutilizar (en ARCHIVELOG, una vez archivado). En mi evidencia 10, tras dos SWITCH quedan 19 ACTIVE, 20 CURRENT y 18 ACTIVE. Oracle rechaza borrar el grupo CURRENT (ORA-01623) y un miembro del CURRENT (ORA-01609); el tercer borrado (ORA-01567) no lo probé, porque con mis 3 grupos el DROP habría funcionado de verdad.
+
+**16.** La FRA se acerca al límite y salta el aviso ORA-19815 en el alert log; al llenarse, ARCn no puede archivar (ORA-19809 y ORA-16038); los grupos llenos se quedan con ARCHIVED = NO; cuando LGWR da la vuelta, no puede reutilizar un grupo sin archivar y las sesiones esperan en «log file switch (archiving needed)»; las conexiones nuevas reciben ORA-00257. En mi evidencia 11 los grupos 1 y 2 quedaron con ARC = NO y volvieron a YES al devolver los 4 GB.
+
+**17.** (evidencia 12) Paso 1: B lee ACTIVO aunque A ya cambió el bloque, porque Oracle reconstruye la versión confirmada con el undo y no espera. Pasos 2 y 3: A tiene 1 bloque de undo, TM 3 y TX 6. Paso 4: cuando B intenta bloquear la misma fila, ORA-00054 + ORA-40097 (transacción 5.9.894). Leer no bloquea; solo chocan dos escritores sobre la misma fila.
+
+**18.** Para deshacer un INSERT basta «borra este ROWID»; para deshacer un DELETE hay que guardar la fila entera y sus entradas de índice: 3416 KB de undo frente a 1136 KB (evidencia 12). El ROLLBACK genera redo porque deshacer es aplicar cambios en los bloques, y todo cambio se protege con redo: 4701 KB para deshacer el DELETE.
+
+**19.** Justo después del COMMIT, la garantía está en el redo log online: LGWR escribió 1779 KB y DBWn 0 bloques, con 231 bloques de la tabla sucios en memoria (evidencia 13). Después del checkpoint, también en los datafiles: DBWn escribió 348 bloques y quedaron 0 sucios.
+
+**20.** (evidencia 14a) Roll forward: SMON lee el redo desde el último checkpoint (logseq 26, bloque 4083), 2067 KB, y rehace los 169 bloques que no estaban en disco, incluidos los de la transacción de 103 y su undo. Roll back: con ese undo deshace lo no confirmado. Resultado: 102 sigue en EGRESADO (durabilidad) y 103 vuelve a ACTIVO (atomicidad).
+
+**21.** C: RTO 43 s y RPO 1 s (artificial: la copia era de un segundo antes; en la vida real sería todo desde la última copia). D: RTO 8 s y RPO 0. Son tan distintos porque C restaura toda la base para recuperar una tabla y vuelve todo al pasado, mientras que D restaura solo un archivo y le aplica el redo archivado hasta el último COMMIT.
+
+**22.** Bloque 5 del runbook (últimas 24 h):
+
+| Error | Clasificación | Por qué |
+|---|---|---|
+| ORA-63999 (data file suffered media failure) | Efecto del laboratorio | Simulacro D: Oracle cerró FREEPDB1 al perder academia01.dbf (archivo 16) |
+| ORA-01110 (archivo 16) | Efecto del laboratorio | Simulacro D, el mismo archivo |
+| ORA-01113 (file 26 needs media recovery) | Efecto del laboratorio | Al reabrir FREEPDB1 tras el cierre brusco, tiendasur01.dbf (archivo 26) no estaba al día y Oracle lo recuperó solo; la PDB acabó abierta y la verificación da OK |
+| ORA-00202 / ORA-205 | Efecto del laboratorio | Simulacro B: control03.ctl borrado |
+| ORA-00800 (Set Priority Failed, LGWR/VKTM) | Ruido conocido del entorno | El contenedor no deja subir la prioridad de esos procesos; ya lo vi en el Lab 4 en cada arranque |
+
+No hay ningún incidente real.
+
+## Simulacro de examen 1Z0-182
+
+| Pregunta | Respuesta | Dónde lo comprobé |
+|---|---|---|
+| S1 | B | Parte E: IX_PED_CLIENTE con CF 999 041 lee 9920 bloques para el 1 % |
+| S2 | A y C | Partes D y F: funcional 1486 → 4; reescrita con LOWER, 4 sin índices nuevos |
+| S3 | B | Parte F: `filter(TO_NUMBER("CODIGO_POSTAL")=30001)` |
+| S4 | B | Parte D: 4 bitmaps, 4073 → 528 |
+| S5 | B | Parte D: SKIP SCAN de IX_CLI_PAIS_CIUDAD para Lorca |
+| S6 | B | Parte G: IX_PED_IMPORTE INVISIBLE y Q2 igual (328) |
+| S7 | A y C | Parte H: COALESCE 226 → 2 lecturas; SHRINK SPACE 4 → 1,69 MB |
+| S8 | B | Parte H: el rango con REVERSE pasa de 4 a 866 lecturas |
+| S9 | C | Parte G: UPDATE de importe, 6 bloques por fila con 4 o con 9 índices |
+| S10 | B | Parte C, reto: con texto el fo baja a 441 y la altura sube a 3 |
+| S11 | A y C | Parte D: IOT, 3 lecturas frente a 4 del montículo + PK |
+| S12 | B | Parte I: control file frente a cabeceras |
+| S13 | C | Parte I: CKPT registra; DBWn escribe (Parte N) |
+| S14 | B y E | Lab 4, Parte E (NOMOUNT) y simulacro B (STATUS = STARTED) |
+| S15 | B | Parte L (mi base ya estaba en ARCHIVELOG) |
+| S16 | B | Parte K (grupos y estados) |
+| S17 | A y C | Parte M: lectura consistente y AS OF TIMESTAMP |
+| S18 | B | Parte M: 2031 KB de los 4824 KB de redo del INSERT describen el undo |
+| S19 | A | Parte N: COMMIT con 0 bloques escritos por DBWn |
+| S20 | A | Parte I, reto: con fast_start_mttr_target = 0 DBWn no tiene prisa |
+| S21 | B | Parte L: FRA llena, ORA-16038 y ARC = NO |
+| S22 | B | Simulacro D y el runbook (camino A) |
+| S23 | B | Parte O, teoría del simulacro D |
+| S24 | B | Lab 4, Parte J y Parte L |
+| S25 | B y D | Parte M (undo_retention, v$undostat) |
+| S26 | A | Parte L: v$recovery_area_usage |
