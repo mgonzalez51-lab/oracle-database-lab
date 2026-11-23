@@ -1,0 +1,13 @@
+===== 1. Cambios de log y MB de redo archivado por hora (hoy, en UTC) =====
+
+HORA		 CAMBIOS_DE_LOG    MB_REDO
+---------------- -------------- ----------
+2026-11-23 12h		      1        196
+2026-11-23 16h		      1        196
+2026-11-23 18h		      3        587
+2026-11-23 19h		      6        808
+===== 2. Propuesta: tamaño de grupo para que la hora de más redo produzca como mucho 4 cambios =====
+
+MB_HORA_PICO MB_MINIMO_POR_GRUPO PROPUESTA_MB_REDONDEADA
+------------ ------------------- -----------------------
+	 808		     203		     256

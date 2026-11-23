@@ -91,3 +91,26 @@ Issue #9 · rama `chore/9-oracle-dba-workflow-ii` · evidencias en `docs/bitacor
 - Más allá: generé un PFILE nuevo desde el SPFILE y lo comparé con el del Lab 4 (`initFREE_lab4.ora`). Solo cambia la línea `*.control_files`. Así cualquier cambio de configuración física queda revisable con `git diff`.
 - Las tres copias están en el mismo volumen: protegen de borrar o corromper UN archivo, no de perder el disco. En producción irían en discos distintos, con CONTROLFILE AUTOBACKUP de RMAN.
 - **J1 → B.** **J2 → A y C.**
+
+## Parte K: redo log
+
+- Mi base no es la del enunciado: tiene 3 grupos de 200 MB, no 2 de 20 MB. Ahora cada grupo tiene 2 miembros (`redo0N.log` y `redo0Nb.log`). Los nuevos aparecen INVALID hasta que LGWR los escribe, y con los SWITCH LOGFILE el CURRENT avanza en círculo (secuencias 18 → 19 → 20).
+- Errores protegidos: ORA-01623 al borrar el grupo CURRENT y ORA-01609 al borrar un miembro del CURRENT.
+- **Más allá: corregí el paso 4c antes de ejecutarlo.** El kit supone 2 grupos y prueba a borrar otro para que salte ORA-01567. Con mis 3 grupos el DROP dejaría 2 y Oracle lo permitiría, así que el script habría borrado un grupo de verdad. Lo cambié para que solo lo pruebe si hay exactamente 2 grupos (el cambio está en `scripts/lab5/10-redo.sql`, comentado).
+- **K1 → C.**
+- **Reto K: dimensionar el redo.** Redo archivado hoy por hora (UTC): 12h 196 MB (1 cambio), 16h 196 MB (1 cambio, la carga de TiendaSur), 18h 587 MB (3), 19h 808 MB (6, la Parte H más 2 SWITCH manuales). Con mis grupos de 200 MB la carga de TiendaSur solo produjo 1 cambio, no decenas como en el enunciado con 20 MB. El pico es de 808 MB/h, así que para un máximo de 4 cambios por hora harían falta 808 / 4 = 203 MB: propongo 256 MB por grupo. Comandos (no ejecutados), con la base abierta:
+
+  ```sql
+  ALTER DATABASE ADD LOGFILE GROUP 4 ('/opt/oracle/oradata/FREE/redo04.log', '/opt/oracle/oradata/FREE/redo04b.log') SIZE 256M;
+  ALTER DATABASE ADD LOGFILE GROUP 5 ('/opt/oracle/oradata/FREE/redo05.log', '/opt/oracle/oradata/FREE/redo05b.log') SIZE 256M;
+  ALTER DATABASE ADD LOGFILE GROUP 6 ('/opt/oracle/oradata/FREE/redo06.log', '/opt/oracle/oradata/FREE/redo06b.log') SIZE 256M;
+  -- Repetir hasta que los grupos 1-3 estén INACTIVE y ARCHIVED = YES en v$log:
+  ALTER SYSTEM SWITCH LOGFILE;
+  ALTER SYSTEM CHECKPOINT;
+  ALTER DATABASE DROP LOGFILE GROUP 1;
+  ALTER DATABASE DROP LOGFILE GROUP 2;
+  ALTER DATABASE DROP LOGFILE GROUP 3;
+  -- Sin OMF, Oracle no borra los archivos: se quitan después desde el sistema operativo (redo01*.log, redo02*.log, redo03*.log)
+  ```
+
+  Un grupo no se puede redimensionar: se crean los nuevos y se borran los viejos cuando ya no están ACTIVE ni CURRENT.
