@@ -1,0 +1,22 @@
+===== 0. Qué devuelve cada condición (para no "optimizar" una consulta que está mal) =====
+
+   TEL_600 APELLIDOS_IGUAL_GIL SEGUNDO_APELLIDO_GIL
+---------- ------------------- --------------------
+       981		     0		       6121
+===== 1. Tal como viene en el PR (sin índices en telefono ni apellidos) =====
+PR original		       filas=	 981  lecturas l??gicas=   1487  f??sicas=    0     17.1 ms
+			       plan: TABLE ACCESS FULL CLIENTE
+===== 2. El PR original CON índices: las funciones los inutilizan =====
+PR original + ??ndices	       filas=	 981  lecturas l??gicas=   1487  f??sicas=    0     17.8 ms
+			       plan: TABLE ACCESS FULL CLIENTE
+===== 3. Reescrita: columnas desnudas, prefijo con LIKE y el dato como se guarda =====
+Reescrita (mismo resultado)    filas=	 981  lecturas l??gicas=    722  f??sicas=    0      3.8 ms
+			       plan: TABLE ACCESS BY INDEX ROWID BATCHED CLIENTE > BITMAP CONVERSION TO ROWIDS > BITMAP OR > BITMAP CONVERSION FROM ROWIDS > INDEX RANGE SCAN IX_CLI_APELLIDOS > BITMAP
+CONVERSION FROM ROWIDS > SORT ORDER BY > INDEX RANGE SCAN IX_CLI_TELEFONO
+Reescrita (2.?? apellido Gil)  filas=	7033  lecturas l??gicas=   1499  f??sicas=    0     11.2 ms
+			       plan: TABLE ACCESS FULL CLIENTE
+===== Limpieza =====
+
+INDICES_TIENDASUR
+-----------------
+		7
