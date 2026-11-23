@@ -1,0 +1,20 @@
+===== 1. Filas por bloque, contadas con el ROWID =====
+
+BLOQUES_CON_FILAS  MIN_FILAS	  MEDIA  MAX_FILAS
+----------------- ---------- ---------- ----------
+	     5220	   2	  191.6        200
+===== 2. Lo que dicen las estadísticas =====
+
+  NUM_ROWS     BLOCKS BFR_ESTADISTICAS
+---------- ---------- ----------------
+   1000000	 5320		   188
+===== 3. Cuántos bloques hay con cada número de filas =====
+
+FILAS_EN_BLOQUE    BLOQUES
+--------------- ----------
+	      2 	 1
+	    191       2301
+	    192       2867
+	    196 	 7
+	    197 	43
+	    200 	 1
