@@ -1,0 +1,40 @@
+
+
+
+===== 1 · NECESIDAD: Q5 (identificar a quien llama) sin el índice =====
+Q5 sin ix_cli_telefono	       filas=	   1  lecturas l??gicas=   1486  f??sicas=    0      4.1 ms
+			       plan: TABLE ACCESS FULL CLIENTE
+===== 3a · ESCRITURA en CLIENTE sin el índice (2000 altas de cliente, deshechas) =====
+CLIENTE INSERT sin	       filas=  2000  lecturas l??gicas=  22556	bloques modificados= 20319  redo=  2719 KB    29.8 ms  | por fila: 10.2 bloques, 1392 bytes de redo
+===== 1 · NECESIDAD: Q5 con el índice =====
+Q5 con ix_cli_telefono	       filas=	   1  lecturas l??gicas=      6  f??sicas=    0       .2 ms
+			       plan: TABLE ACCESS BY INDEX ROWID BATCHED CLIENTE > BITMAP CONVERSION TO ROWIDS > BITMAP OR > BITMAP CONVERSION FROM ROWIDS > INDEX RANGE SCAN UX_CLI_EMAIL > BITMAP CONV
+ERSION FROM ROWIDS > INDEX RANGE SCAN IX_CLI_TELEFONO
+===== 2 · VIABILIDAD: selectividad de telefono =====
+
+INDEX_NAME	     CLAVES   ENTRADAS PCT_POR_VALOR	     CF
+---------------- ---------- ---------- ------------- ----------
+IX_CLI_TELEFONO       99952	100000		.001	  99924
+===== 3b · ESCRITURA en CLIENTE con el índice =====
+CLIENTE INSERT con	       filas=  2000  lecturas l??gicas=  26542	bloques modificados= 24307  redo=  3177 KB	39 ms  | por fila: 12.2 bloques, 1627 bytes de redo
+===== 4 · REDUNDANCIA: ¿algún índice de CLIENTE empieza ya por telefono? =====
+
+INDEX_NAME	 COLUMNAS
+---------------- ------------------------------
+IX_CLI_PAIS_CIUD PAIS, CIUDAD
+AD
+
+IX_CLI_TELEFONO  TELEFONO
+PK_CLIENTE	 ID_CLIENTE
+UX_CLI_DNI	 DNI
+UX_CLI_EMAIL	 EMAIL
+===== Coste en espacio =====
+
+INDEX_NAME		 MB
+---------------- ----------
+IX_CLI_TELEFONO 	  3
+===== Limpieza: la decisión va en V006 (rama aparte), no se aplica aquí =====
+
+INDICES_TIENDASUR
+-----------------
+		9
