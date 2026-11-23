@@ -82,3 +82,12 @@ Issue #9 · rama `chore/9-oracle-dba-workflow-ii` · evidencias en `docs/bitacor
 - **Punto de control.** (1) PDB$SEED (CON_ID 2) se queda en 2 098 101 porque está en solo lectura: nadie cambia sus bloques y el checkpoint no la toca. (2) Mi ACTUAL_REDO_BLKS es 309, no 33 024, porque el SHUTDOWN IMMEDIATE del backup hizo un checkpoint completo y el redo de las Partes B a H ya estaba cubierto. (3) Con una carga diez veces mayor crecería el redo pendiente y con él el MTTR; lo acota FAST_START_MTTR_TARGET (más bajo = checkpoints incrementales más frecuentes = más escritura en datafiles).
 - **I1 → B.**
 - **Reto I.** Tras el UPDATE de 20 000 filas sin checkpoint: ACTUAL_REDO_BLKS pasa de 12 a 3676 (unos 1,8 MB de redo) y RECOVERY_ESTIMATED_IOS de 11 a 354 (bloques sucios). El MTTR se queda en 2 s y a los 30 s no baja, porque con fast_start_mttr_target = 0 DBWn solo escribe cuando el redo pendiente se acerca a TARGET_REDO_BLKS (663 552 bloques, unos 324 MB). La relación: cuanto más redo pendiente y más bloques sucios, más redo hay que aplicar y más bloques leer en una recuperación de instancia, y por tanto más MTTR.
+
+## Parte J: control files
+
+- Antes había 2 copias (control01 y control02, de 18 MB). Ahora hay 3: control03.ctl se añadió con el procedimiento oficial (`control_files` en el SPFILE porque es estático, SHUTDOWN IMMEDIATE, `cp -p` de una copia sana y STARTUP).
+- En el control file: 26 datafiles, 17 de 28 registros de ARCHIVED LOG y 6 BACKUP SET que no hice yo (seguramente de cuando se construyó la imagen). Cuando se llena, reutiliza los registros que superan control_file_record_keep_time = 7 días; para un historial largo hace falta un catálogo de RMAN.
+- El `BACKUP CONTROLFILE TO TRACE` genera un `CREATE CONTROLFILE ... NORESETLOGS FORCE LOGGING ARCHIVELOG` con todos los datafiles y redo logs: es la última defensa si se pierden las tres copias.
+- Más allá: generé un PFILE nuevo desde el SPFILE y lo comparé con el del Lab 4 (`initFREE_lab4.ora`). Solo cambia la línea `*.control_files`. Así cualquier cambio de configuración física queda revisable con `git diff`.
+- Las tres copias están en el mismo volumen: protegen de borrar o corromper UN archivo, no de perder el disco. En producción irían en discos distintos, con CONTROLFILE AUTOBACKUP de RMAN.
+- **J1 → B.** **J2 → A y C.**
