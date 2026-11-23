@@ -1,0 +1,184 @@
+
+Recovery Manager: Release 23.26.3.0.0 - Production on Mon Nov 23 20:02:07 2026
+Version 23.26.3.0.0
+
+Copyright (c) 1982, 2026, Oracle and/or its affiliates.  All rights reserved.
+
+connected to target database: FREE (DBID=1509902213)
+
+RMAN> LIST ARCHIVELOG LIKE '%/dbs/arch%';
+using target database control file instead of recovery catalog
+List of Archived Log Copies for database with db_unique_name FREE
+=====================================================================
+
+Key     Thrd Seq     S Low Time 
+------- ---- ------- - ---------
+1       1    1       A 05-JUL-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_1_1237845575.dbf
+
+2       1    2       A 23-OCT-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_2_1237845575.dbf
+
+3       1    3       A 25-OCT-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_3_1237845575.dbf
+
+4       1    4       A 13-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_4_1237845575.dbf
+
+5       1    5       A 14-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_5_1237845575.dbf
+
+6       1    6       A 14-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_6_1237845575.dbf
+
+7       1    7       A 14-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_7_1237845575.dbf
+
+8       1    8       A 15-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_8_1237845575.dbf
+
+9       1    9       A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_9_1237845575.dbf
+
+10      1    10      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_10_1237845575.dbf
+
+11      1    11      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_11_1237845575.dbf
+
+12      1    12      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_12_1237845575.dbf
+
+13      1    13      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_13_1237845575.dbf
+
+14      1    14      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_14_1237845575.dbf
+
+15      1    15      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_15_1237845575.dbf
+
+16      1    16      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_16_1237845575.dbf
+
+17      1    17      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_17_1237845575.dbf
+
+19      1    18      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_18_1237845575.dbf
+
+18      1    19      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_19_1237845575.dbf
+
+
+
+RMAN> DELETE NOPROMPT ARCHIVELOG LIKE '%/dbs/arch%';
+allocated channel: ORA_DISK_1
+channel ORA_DISK_1: SID=22 device type=DISK
+List of Archived Log Copies for database with db_unique_name FREE
+=====================================================================
+
+Key     Thrd Seq     S Low Time 
+------- ---- ------- - ---------
+1       1    1       A 05-JUL-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_1_1237845575.dbf
+
+2       1    2       A 23-OCT-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_2_1237845575.dbf
+
+3       1    3       A 25-OCT-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_3_1237845575.dbf
+
+4       1    4       A 13-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_4_1237845575.dbf
+
+5       1    5       A 14-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_5_1237845575.dbf
+
+6       1    6       A 14-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_6_1237845575.dbf
+
+7       1    7       A 14-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_7_1237845575.dbf
+
+8       1    8       A 15-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_8_1237845575.dbf
+
+9       1    9       A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_9_1237845575.dbf
+
+10      1    10      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_10_1237845575.dbf
+
+11      1    11      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_11_1237845575.dbf
+
+12      1    12      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_12_1237845575.dbf
+
+13      1    13      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_13_1237845575.dbf
+
+14      1    14      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_14_1237845575.dbf
+
+15      1    15      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_15_1237845575.dbf
+
+16      1    16      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_16_1237845575.dbf
+
+17      1    17      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_17_1237845575.dbf
+
+19      1    18      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_18_1237845575.dbf
+
+18      1    19      A 23-NOV-26
+        Name: /opt/oracle/product/26ai/dbhomeFree/dbs/arch1_19_1237845575.dbf
+
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_1_1237845575.dbf RECID=1 STAMP=1247424678
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_2_1237845575.dbf RECID=2 STAMP=1247559945
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_3_1237845575.dbf RECID=3 STAMP=1249237185
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_4_1237845575.dbf RECID=4 STAMP=1249268146
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_5_1237845575.dbf RECID=5 STAMP=1249290008
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_6_1237845575.dbf RECID=6 STAMP=1249308021
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_7_1237845575.dbf RECID=7 STAMP=1249403987
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_8_1237845575.dbf RECID=8 STAMP=1250081265
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_9_1237845575.dbf RECID=9 STAMP=1250092942
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_10_1237845575.dbf RECID=10 STAMP=1250102956
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_11_1237845575.dbf RECID=11 STAMP=1250102963
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_12_1237845575.dbf RECID=12 STAMP=1250102970
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_13_1237845575.dbf RECID=13 STAMP=1250103965
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_14_1237845575.dbf RECID=14 STAMP=1250103974
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_15_1237845575.dbf RECID=15 STAMP=1250104229
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_16_1237845575.dbf RECID=16 STAMP=1250104236
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_17_1237845575.dbf RECID=17 STAMP=1250104242
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_18_1237845575.dbf RECID=19 STAMP=1250106945
+deleted archived log
+archived log file name=/opt/oracle/product/26ai/dbhomeFree/dbs/arch1_19_1237845575.dbf RECID=18 STAMP=1250106945
+Deleted 19 objects
+
+
+
+RMAN> 
+
+Recovery Manager complete.

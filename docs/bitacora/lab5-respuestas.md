@@ -114,3 +114,13 @@ Issue #9 · rama `chore/9-oracle-dba-workflow-ii` · evidencias en `docs/bitacor
   ```
 
   Un grupo no se puede redimensionar: se crean los nuevos y se borran los viejos cuando ya no están ACTIVE ni CURRENT.
+
+## Parte L: ARCHIVELOG y Fast Recovery Area
+
+- Mi base ya estaba en ARCHIVELOG desde el Lab 3, pero sin FRA: archivaba en `?/dbs/arch` sin límite (casi 3 GB después de las Partes B a H). Antes de activar la FRA comprobé que ningún `log_archive_dest_n` tenía ruta; si lo hubiera tenido, los archivados seguirían yendo allí aunque hubiera FRA.
+- El script provoca ORA-02097 + ORA-19802 al fijar la ruta antes que el tamaño. En el orden correcto (4 GB y luego `/opt/oracle/oradata/fra`) no hizo falta reiniciar, porque ya estaba en ARCHIVELOG. El destino pasa a USE_DB_RECOVERY_FILE_DEST.
+- El corte se ve en v$archived_log: las secuencias 18 y 19 son `arch1_N_1237845575.dbf` en `dbs` y la 20 y 21 ya son OMF (`o1_mf_1_20_...arc`) en `fra/FREE/archivelog/2026_11_23/`.
+- **Más allá: limpieza de los archivados antiguos con RMAN.** Con `DELETE NOPROMPT ARCHIVELOG LIKE '%/dbs/arch%'` borré 19 archivados (desde la secuencia 1, del 5 de julio, hasta la 19) y `dbs` bajó a 127 MB. Ninguna recuperación del laboratorio los necesitaba: el simulacro D hace su propia copia RMAN, y las copias en frío lab4-final y lab5-indices ya los contienen. Lo hice con RMAN y no con `rm` para que se actualice el control file.
+- **Punto de control.** En mi caso ARC0-ARC3 ya aparecían en el Lab 4 (Parte H, 4 ARCn), porque la base ya estaba en ARCHIVELOG; lo único nuevo es el destino. Los nombres o1_mf_ son OMF: Oracle los crea en `fra/FREE/archivelog/<fecha>/`.
+- FRA llena (2 MB, solo en memoria): ORA-16038 (no se puede archivar la secuencia 22), ORA-19809 y, en el alert log, ORA-19815 al 100 %. Los grupos 1 y 2 quedan con ARC = NO; si siguiera así, LGWR se pararía en «log file switch (archiving needed)». Al volver a 4 GB, ARCn reintenta solo y los dos pasan a YES. Como el cambio fue con SCOPE = MEMORY, el SPFILE sigue con 4 GB.
+- **L1 → B.** **L2 → A y C** (E es la trampa: borrar con `rm`).
