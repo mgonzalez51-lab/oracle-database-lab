@@ -1,0 +1,5 @@
+===== Reto C: UX_CLI_EMAIL frente a PK_CLIENTE (mismas 100 000 entradas) =====
+UX_CLI_EMAIL  altura=3	hojas=501  ramas=3  bytes/entrada hoja=35.9  bytes/entrada rama=18.2  fo_max=441  pct_used=90
+	      altura = 1 + ceil(log_441(501)) = 3   (INDEX_STATS dice 3)
+PK_CLIENTE    altura=2	hojas=187  ramas=1  bytes/entrada hoja=14.9  bytes/entrada rama=10.9  fo_max=736  pct_used=100
+	      altura = 1 + ceil(log_736(187)) = 2   (INDEX_STATS dice 2)

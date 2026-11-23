@@ -1,0 +1,15 @@
+===== MTTR y redo pendiente: antes, justo después del UPDATE y 30 s más tarde (sin ALTER SYSTEM CHECKPOINT) =====
+
+MOMENTO 		       ESTIMATED_MTTR ACTUAL_REDO_BLKS TARGET_REDO_BLKS RECOVERY_ESTIMATED_IOS
+------------------------------ -------------- ---------------- ---------------- ----------------------
+1. antes				    2		    12		 663552 		    11
+
+MOMENTO 		       ESTIMATED_MTTR ACTUAL_REDO_BLKS TARGET_REDO_BLKS RECOVERY_ESTIMATED_IOS
+------------------------------ -------------- ---------------- ---------------- ----------------------
+2. justo despu??s (20 000 fila		    2		  3676		 663552 		   354
+s)
+
+
+MOMENTO 		       ESTIMATED_MTTR ACTUAL_REDO_BLKS TARGET_REDO_BLKS RECOVERY_ESTIMATED_IOS
+------------------------------ -------------- ---------------- ---------------- ----------------------
+3. 30 s despu??s			    2		  3682		 663552 		   360

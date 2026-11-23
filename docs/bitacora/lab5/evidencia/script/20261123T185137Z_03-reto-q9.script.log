@@ -1,0 +1,14 @@
+===== 1. Q9 tal cual, con IX_PED_FECHA =====
+Q9 con ix_ped_fecha	       filas=	  20  lecturas l??gicas=      5  f??sicas=    0       .2 ms
+			       plan: COUNT STOPKEY > VIEW > TABLE ACCESS BY INDEX ROWID PEDIDO > INDEX FULL SCAN DESCENDING IX_PED_FECHA
+===== 2. Lo que costaría el cubriente: tamaño de la tabla frente al de IX_PED_FECHA =====
+
+SEGMENT_NAME																 MB
+-------------------------------------------------------------------------------------------------------------------------------- ----------
+IX_PED_FECHA																 22
+PEDIDO																	 42
+===== 3. En cuántos bloques de la tabla están esas 20 filas =====
+
+BLOQUES_DE_TABLA
+----------------
+	       2
